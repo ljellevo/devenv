@@ -20,13 +20,16 @@ describe('assisted updater', () => {
     const { root, updater } = await create((async (input, options) => {
       const url = String(input); requests.push({ url, options });
       if (url.endsWith('/latest')) return Response.json({ tag_name: 'v0.2.0', assets: [{ id: 4, name: 'Devenv-0.2.0-arm64.dmg', size: body.length, digest }] });
-      if (url.includes('/assets/')) return new Response(null, { status: 302, headers: { location: 'https://release-assets.githubusercontent.com/installer' } });
+      if (url.includes('/assets/')) return new Response(null, { status: 302, headers: { location: 'https://release-assets.githubusercontent.com/first-hop' } });
+      if (url.endsWith('/first-hop')) return new Response(null, { status: 302, headers: { location: 'https://objects.githubusercontent.com/installer' } });
       return new Response(body);
     }) as typeof fetch);
     await updater.saveToken('secret'); await updater.check('ljellevo/devenv'); expect(updater.state.status).toBe('available');
     const file = await updater.download('ljellevo/devenv'); expect(await readFile(file)).toEqual(body);
     expect(requests[1].options?.headers).toHaveProperty('Authorization', 'Bearer secret');
-    expect(requests[2].options?.headers).toBeUndefined(); expect(file.startsWith(root)).toBe(true);
+    expect(requests[2].options?.headers).toBeUndefined();
+    expect(requests[3].options?.headers).toBeUndefined();
+    expect(file.startsWith(root)).toBe(true);
   });
   it('rejects incomplete downloads and unsafe redirects', async () => {
     const { updater } = await create((async input => String(input).endsWith('/latest') ? Response.json({ tag_name: 'v0.2.0', assets: [{ id: 4, name: 'Devenv-0.2.0-arm64.dmg', size: 8 }] }) : new Response(null, { status: 302, headers: { location: 'https://example.com/installer' } })) as typeof fetch);

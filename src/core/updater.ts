@@ -72,14 +72,22 @@ export class Updater {
     this.set({ status: 'downloading', latest, progress: 0 });
     try {
       await mkdir(directory, { recursive: true, mode: 0o700 });
-      let response = await this.request(`https://api.github.com/repos/${repo}/releases/assets/${asset.id}`, { headers: await this.headers('application/octet-stream'), redirect: 'manual', signal: AbortSignal.timeout(30000) });
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
+      let url = new URL(`https://api.github.com/repos/${repo}/releases/assets/${asset.id}`);
+      let response: Response;
+      for (let redirects = 0; ; redirects++) {
+        response = await this.request(url, {
+          ...(redirects === 0 ? { headers: await this.headers('application/octet-stream') } : {}),
+          redirect: 'manual', signal: AbortSignal.timeout(redirects === 0 ? 30000 : 600000),
+        });
+        if (![301, 302, 303, 307, 308].includes(response.status)) break;
+        if (redirects >= 5) throw new Error('Too many installer redirects.');
         const location = response.headers.get('location');
         if (!location) throw new Error('GitHub did not return an asset URL.');
-        const url = new URL(location);
-        if (url.protocol !== 'https:' || !(url.hostname.endsWith('.githubusercontent.com') || url.hostname === 'github.com')) throw new Error('Unexpected asset redirect host.');
-        // Never forward the repository token to the signed download URL.
-        response = await this.request(url, { redirect: 'error', signal: AbortSignal.timeout(600000) });
+        const next = new URL(location, url);
+        if (next.protocol !== 'https:' || !(next.hostname.endsWith('.githubusercontent.com') || next.hostname === 'github.com')) throw new Error('Unexpected asset redirect host.');
+        await response.body?.cancel();
+        // Only the initial GitHub API request receives the repository token.
+        url = next;
       }
       if (!response.ok || !response.body) throw new Error(`Download failed (HTTP ${response.status})`);
       const handle = await open(partial, 'w', 0o600);
