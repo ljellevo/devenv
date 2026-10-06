@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, ipcMain, dialog, shell, net } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, ipcMain, dialog, shell } from 'electron';
 import { fork, type ChildProcess } from 'node:child_process';
 import { mkdir, readFile, writeFile, rename, stat } from 'node:fs/promises';
 import { watch, type FSWatcher } from 'node:fs';
@@ -200,7 +200,8 @@ async function boot() {
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') state.error = 'Settings could not be read. Defaults are in use.'; }
   nativeTheme.themeSource = state.settings.appearance;
-  updater = new Updater(root, app.getVersion(), process.arch, update => { state.update = update; publish(); }, net.fetch.bind(net) as typeof fetch);
+  // Electron's net.fetch cancels manual redirects, which GitHub uses for release assets.
+  updater = new Updater(root, app.getVersion(), process.arch, update => { state.update = update; publish(); });
   state.hasToken = await updater.hasToken();
   worker = fork(join(__dirname, 'supervisor.cjs'), [root, state.settings.shell], { execPath: process.execPath, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
   worker.on('message', (data: { id?: number; value?: unknown; error?: string; event?: string; session?: Session; entry?: unknown }) => {
