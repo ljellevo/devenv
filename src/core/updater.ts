@@ -22,10 +22,11 @@ export class Updater {
   private asset?: Asset;
   private checkedRepo?: string;
   private busy = false;
+  private checkedAt?: string;
   constructor(private root: string, readonly current: string, private arch: string, private emit: (state: UpdateInfo) => void, private request: typeof fetch = fetch) {
     this.state = { status: 'idle', current };
   }
-  private set(state: Partial<UpdateInfo>) { this.state = { current: this.current, ...state } as UpdateInfo; this.emit(this.state); }
+  private set(state: Partial<UpdateInfo>) { this.state = { current: this.current, checkedAt: this.checkedAt, ...state } as UpdateInfo; this.emit(this.state); }
   private async token(): Promise<string | undefined> {
     try { return (JSON.parse(await readFile(join(this.root, 'updates.json'), 'utf8')) as { token?: string }).token; }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
@@ -61,7 +62,12 @@ export class Updater {
       this.asset = asset; this.checkedRepo = repo;
       this.set({ status: 'available', latest: release.tag_name, notes: release.body });
     } catch (error) { this.set({ status: 'error', message: error instanceof Error ? error.message : String(error) }); }
-    finally { this.busy = false; }
+    finally {
+      this.checkedAt = new Date().toISOString();
+      this.state = { ...this.state, checkedAt: this.checkedAt };
+      this.emit(this.state);
+      this.busy = false;
+    }
   }
   async download(repo: string): Promise<string> {
     if (this.busy || !this.asset || this.checkedRepo !== repo) throw new Error('Check for updates before downloading.');

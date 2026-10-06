@@ -104,7 +104,7 @@ Use Devenv instead of the old `resources/dev.sh` scripts for daily startup. Thos
 
 ## Updates and releases
 
-Like Oppskriftsbanken, Devenv checks GitHub Releases and offers a matching DMG for assisted installation. The default repository is **ljellevo/devenv**. Packaged apps check four seconds after launch and every three hours while running; Settings and the menu bar also offer a manual check. An available release appears in the app, and installation still requires confirmation.
+Like Oppskriftsbanken, Devenv checks GitHub Releases and offers a matching DMG for assisted installation. The default repository is **ljellevo/devenv**. Packaged apps check four seconds after launch and every three hours while running. They also check on focus or wake if the three-hour interval has elapsed. Settings shows the last check time, and Settings and the menu bar offer a manual check. An available release appears in the app, and installation still requires confirmation.
 
 Public releases work without a token. For a private repository, save a fine-grained GitHub token with read-only **Contents** permission in Settings → Updates. Tokens are stored in a local mode-0600 file rather than Keychain, avoiding repeated Keychain prompts across ad-hoc signed builds. Tokens are never returned to the renderer, logged, or forwarded to asset download hosts. Empty input + Clear removes the saved token.
 

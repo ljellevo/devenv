@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, ipcMain, dialog, shell, powerMonitor } from 'electron';
 import { fork, type ChildProcess } from 'node:child_process';
 import { mkdir, readFile, writeFile, rename, stat } from 'node:fs/promises';
 import { watch, type FSWatcher } from 'node:fs';
@@ -10,6 +10,7 @@ import { readConfigDocument, saveConfigDocument } from '../core/config-files';
 import { themeFromZshrc } from '../core/theme';
 import { message } from '../core/process';
 import { Updater } from '../core/updater';
+import { startUpdatePolling } from '../core/update-polling';
 import { openGhostty, openGhosttyDirectory } from './ghostty';
 import trayIcon from './trayTemplate.png';
 import trayIcon2x from './trayTemplate@2x.png';
@@ -30,10 +31,9 @@ const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL
 const state: AppState = { projects: [], settings: defaults, session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, hasToken: false, theme: themeFromZshrc('') };
 let watchers: FSWatcher[] = [];
 let scanTimer: ReturnType<typeof setTimeout>;
-let updateStartTimer: ReturnType<typeof setTimeout> | undefined;
-let updatePollTimer: ReturnType<typeof setInterval> | undefined;
+let updatePoller: ReturnType<typeof startUpdatePolling> | undefined;
 let rescan = false;
-const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000;
+function checkUpdatesIfDue() { updatePoller?.checkIfDue(); }
 
 function publish() {
   if (window && !window.isDestroyed()) window.webContents.send('devenv:state', state);
@@ -54,7 +54,7 @@ function createWindow() {
   const url = !app.isPackaged && process.env.DEVENV_RENDERER_URL;
   if (url) void window.loadURL(url); else void window.loadFile(join(__dirname, 'renderer/index.html'));
   window.on('close', event => { if (!quitting) { event.preventDefault(); window?.hide(); } });
-  window.on('focus', () => { void refreshTheme(); clearTimeout(scanTimer); scanTimer = setTimeout(() => action(scan), 300); });
+  window.on('focus', () => { void refreshTheme(); clearTimeout(scanTimer); scanTimer = setTimeout(() => action(scan), 300); checkUpdatesIfDue(); });
 }
 async function refreshTheme() {
   state.theme = themeFromZshrc(await readFile(join(homedir(), '.zshrc'), 'utf8').catch(() => ''));
@@ -229,8 +229,8 @@ async function boot() {
   ]));
   if (app.isPackaged) {
     const checkForUpdates = () => { if (!quitRequested) void updater.check(state.settings.releaseRepo); };
-    updateStartTimer = setTimeout(checkForUpdates, 4000);
-    updatePollTimer = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+    updatePoller = startUpdatePolling(checkForUpdates);
+    powerMonitor.on('resume', checkUpdatesIfDue);
   }
   await scan();
 }
@@ -245,7 +245,7 @@ app.on('before-quit', event => {
       if (ready) await rpc('stop');
       else if (state.session && !['stopped', 'failed'].includes(state.session.status)) throw new Error('The supervisor is unavailable. Reopen the app to recover the session before quitting.');
       quitting = true; watchers.forEach(w => w.close()); clearTimeout(scanTimer);
-      clearTimeout(updateStartTimer); clearInterval(updatePollTimer);
+      updatePoller?.stop(); powerMonitor.off('resume', checkUpdatesIfDue);
       if (worker?.connected) worker.disconnect(); app.quit();
     } catch (error) { quitRequested = false; report(error); show(); }
   })();

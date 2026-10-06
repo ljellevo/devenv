@@ -18,7 +18,7 @@ export interface ConfigDocument { path: string; text: string; revision: string }
 export interface ConfigValidation { valid: boolean; message?: string; line?: number; column?: number }
 export interface UpdateInfo {
   status: 'idle' | 'checking' | 'available' | 'uptodate' | 'needsToken' | 'error' | 'downloading' | 'downloaded';
-  current: string; latest?: string; notes?: string; message?: string; progress?: number;
+  current: string; latest?: string; notes?: string; message?: string; progress?: number; checkedAt?: string;
 }
 export interface TerminalTheme { background: string; foreground: string; accent: string; secondary: string; source: string }
 export interface AppState { projects: Project[]; settings: Settings; session: Session | null; scanning: boolean; scanErrors: string[]; error?: string; update: UpdateInfo; hasToken: boolean; theme: TerminalTheme }

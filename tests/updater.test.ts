@@ -25,6 +25,7 @@ describe('assisted updater', () => {
       return new Response(body);
     }) as typeof fetch);
     await updater.saveToken('secret'); await updater.check('ljellevo/devenv'); expect(updater.state.status).toBe('available');
+    expect(updater.state.checkedAt).toEqual(expect.any(String));
     const file = await updater.download('ljellevo/devenv'); expect(await readFile(file)).toEqual(body);
     expect(requests[1].options?.headers).toHaveProperty('Authorization', 'Bearer secret');
     expect(requests[2].options?.headers).toBeUndefined();
