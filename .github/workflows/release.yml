@@ -43,42 +43,9 @@ jobs:
         run: npx playwright install chromium
       - run: npm run test:ui
       - name: Package both Mac architectures
-        id: package
-        run: |
-          present=0
-          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [ -n "${!name}" ]; then present=$((present + 1)); fi
-          done
-          if [ "$present" -eq 0 ]; then
-            echo "::warning::Publishing an ad-hoc signed release. macOS users must approve Devenv in Privacy & Security."
-            npx electron-builder --mac --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false
-          elif [ "$present" -eq 5 ]; then
-            npx electron-builder --mac --publish never -c.mac.forceCodeSigning=true -c.mac.notarize=true
-            echo "notarized=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Configure all five Apple release secrets together, or leave all five unset for an ad-hoc release." >&2
-            exit 1
-          fi
+        run: npx electron-builder --mac --publish never
         env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      - name: Verify notarized apps
-        if: steps.package.outputs.notarized == 'true'
-        run: |
-          shopt -s nullglob
-          apps=(release/*/Devenv.app)
-          if [ "${#apps[@]}" -ne 2 ]; then
-            echo "Expected arm64 and x64 app bundles" >&2
-            exit 1
-          fi
-          for app in "${apps[@]}"; do
-            codesign --verify --deep --strict --verbose=2 "$app"
-            xcrun stapler validate "$app"
-            spctl --assess --verbose --type exec "$app"
-          done
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Publish installers
         uses: softprops/action-gh-release@v2
         with:

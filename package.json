@@ -16,7 +16,7 @@
     "test": "vitest run",
     "test:ui": "playwright test",
     "package": "npm run build && node scripts/package.mjs",
-    "dist": "npm run build && electron-builder --mac dmg -c.mac.identity=- -c.mac.hardenedRuntime=false",
+    "dist": "npm run build && electron-builder --mac dmg",
     "postinstall": "node scripts/ensure-electron.mjs",
     "test:system": "DEVENV_TEST_OS=1 vitest run tests/engine.test.ts"
   },
@@ -85,8 +85,9 @@
       "extendInfo": {
         "NSAppleEventsUsageDescription": "Devenv opens service log tabs in Ghostty."
       },
-      "hardenedRuntime": true
+      "identity": null
     },
+    "afterPack": "./scripts/afterPack.cjs",
     "publish": null,
     "dmg": {
       "title": "${productName} ${arch}",
