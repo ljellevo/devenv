@@ -1,0 +1,84 @@
+# Place in dealroom/resources/devenv.toml. Existing .env files remain in use.
+# Keep declared ports synchronized if changing the project's environment defaults.
+version = 1
+name = "Dealroom"
+
+[services.postgres]
+command = "docker compose up --no-deps --force-recreate postgres"
+ports = [5433]
+ready_command = "docker compose exec -T postgres pg_isready -U dealroom -d dealroom && nc -z 127.0.0.1 5433"
+stop_command = "docker compose stop postgres"
+startup_timeout = 120
+stop_timeout = 30
+
+[services.redis]
+command = "docker compose up --no-deps --force-recreate redis"
+ports = [6379]
+depends_on = ["postgres"]
+ready_command = "docker compose exec -T redis redis-cli ping | grep -q PONG"
+stop_command = "docker compose stop redis"
+startup_timeout = 90
+stop_timeout = 30
+
+[services.convert]
+command = "docker compose up --no-deps --force-recreate convert"
+ports = [3600]
+depends_on = ["redis"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3600/health"
+stop_command = "docker compose stop convert"
+startup_timeout = 600
+stop_timeout = 30
+
+[services.auth]
+cwd = "../auth"
+command = "npm run dev"
+ports = [3200]
+depends_on = ["redis"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3200/ready"
+startup_timeout = 120
+
+[services.storage]
+cwd = "../storage"
+command = "npm run dev"
+ports = [3300]
+depends_on = ["postgres"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3300/ready"
+
+[services.payment]
+cwd = "../payment"
+command = "npm run dev"
+ports = [3500]
+depends_on = ["postgres"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3500/ready"
+
+[services.api]
+cwd = "../api"
+command = "npm run dev"
+ports = [3100]
+depends_on = ["auth", "storage", "payment", "convert"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3100/ready"
+startup_timeout = 120
+
+[services.app]
+cwd = "../app"
+command = "npm run dev"
+ports = [3000]
+depends_on = ["api"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3000/health"
+startup_timeout = 180
+
+[services.admin]
+cwd = "../admin"
+command = "npm run dev"
+ports = [3400]
+depends_on = ["api"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3400/health"
+startup_timeout = 180
+
+[services.homepage]
+cwd = "../homepage"
+command = "npm run dev"
+ports = [3001]
+depends_on = ["api"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3001/health"
+startup_timeout = 180

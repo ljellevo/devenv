@@ -1,0 +1,39 @@
+# Place this file at mekle-2.0/devenv.toml. Paths are relative to that root.
+version = 1
+name = "Mekle 2.0"
+
+[services.postgres]
+cwd = "."
+# start_server.sh expects an existing, running container before it recreates it.
+command = "docker container inspect postgres_mekle >/dev/null 2>&1 || docker run -d --name postgres_mekle -e POSTGRES_PASSWORD=postgres postgres:16.6; docker start postgres_mekle >/dev/null 2>&1 || true; ./start_server.sh mekle_db"
+mode = "background"
+ports = [5432]
+ready_command = "docker exec postgres_mekle pg_isready -U postgres -d mekle_db"
+stop_command = "docker rm -f postgres_mekle"
+logs_command = "docker logs -f postgres_mekle"
+startup_timeout = 900
+stop_timeout = 30
+
+[services.api]
+cwd = "./api"
+command = "npm run dev"
+ports = [8080]
+depends_on = ["postgres"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:8080/health"
+startup_timeout = 180
+
+[services.crm]
+cwd = "./mekle-crm"
+command = "npm run dev -- --port 3000"
+ports = [3000]
+depends_on = ["api"]
+ready_command = "nc -z 127.0.0.1 3000 || nc -z ::1 3000"
+startup_timeout = 180
+
+[services.customer_portal]
+cwd = "./customer-portal"
+command = "npm run dev -- --port 3001"
+ports = [3001]
+depends_on = ["api"]
+ready_command = "nc -z 127.0.0.1 3001 || nc -z ::1 3001"
+startup_timeout = 180

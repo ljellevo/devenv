@@ -1,0 +1,74 @@
+# Place in intivo/resources/devenv.toml. All paths are relative to this file.
+version = 1
+name = "Intivo"
+
+[services.postgres]
+cwd = "../intivo"
+command = "docker compose up --no-deps --force-recreate db"
+ports = [5433]
+ready_command = "docker compose exec -T db pg_isready -U intivo -d intivo_platform && nc -z 127.0.0.1 5433"
+stop_command = "docker compose stop db"
+startup_timeout = 120
+stop_timeout = 30
+
+[services.documents]
+cwd = "../intivo"
+command = "docker compose up --no-deps --force-recreate markitdown"
+ports = [3200]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3200/health"
+stop_command = "docker compose stop markitdown"
+startup_timeout = 300
+stop_timeout = 30
+# Serialize Compose startup to avoid racing creation of the shared network.
+depends_on = ["postgres"]
+
+[services.ollama]
+cwd = "../intivo"
+command = "pnpm ollama"
+# The existing wrapper reads .env, prepares models, and may reuse an external server.
+# No declared port: a reused Ollama server must not be reclaimed.
+allow_successful_exit = true
+stop_timeout = 20
+
+[services.migrate]
+cwd = "../intivo"
+command = "pnpm migrate"
+mode = "task"
+depends_on = ["postgres"]
+startup_timeout = 180
+
+[services.api]
+cwd = "../intivo"
+command = "pnpm --filter @intivo/api dev"
+ports = [3100]
+depends_on = ["migrate", "documents", "ollama"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3100/api/health"
+startup_timeout = 120
+
+[services.web]
+cwd = "../intivo"
+command = "pnpm --filter @intivo/web exec vite --strictPort"
+ports = [5173]
+depends_on = ["api"]
+ready_command = "nc -z ::1 5173 || nc -z 127.0.0.1 5173"
+
+[services.admin]
+cwd = "../intivo-admin"
+command = "npm run dev -- --strictPort"
+ports = [5174]
+depends_on = ["api"]
+ready_command = "nc -z ::1 5174 || nc -z 127.0.0.1 5174"
+
+[services.home]
+cwd = "../intivo-home"
+command = "npm run dev -- --port 3000"
+ports = [3000]
+depends_on = ["api"]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:3000/"
+startup_timeout = 180
+
+[services.stripe]
+enabled = false
+cwd = "../intivo"
+command = "stripe listen --forward-to localhost:3100/api/billing/stripe/webhook --events setup_intent.succeeded,invoice.paid,invoice.payment_failed,invoice.payment_action_required,invoice.finalized,invoice.finalization_failed,invoice.voided,invoice.marked_uncollectible,invoice.updated"
+depends_on = ["api"]

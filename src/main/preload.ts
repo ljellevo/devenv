@@ -1,0 +1,19 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import type { DesktopAPI } from '../shared/types';
+const invoke = (name: string, ...args: unknown[]) => ipcRenderer.invoke(`devenv:${name}`, ...args);
+const subscribe = (name: string, callback: (value: any) => void) => {
+  const listener = (_event: unknown, value: unknown) => callback(value);
+  ipcRenderer.on(name, listener); return () => ipcRenderer.removeListener(name, listener);
+};
+const api: DesktopAPI = {
+  state: () => invoke('state'), scan: () => invoke('scan'), addFolder: () => invoke('addFolder'),
+  saveSettings: value => invoke('saveSettings', value), start: id => invoke('start', id), stop: () => invoke('stop'), restart: name => invoke('restart', name),
+  startService: (id, name) => invoke('startService', id, name), stopService: (id, name) => invoke('stopService', id, name),
+  logs: service => invoke('logs', service), openTerminal: () => invoke('openTerminal'),
+  openConfigFinder: id => invoke('openConfigFinder', id), openConfigTerminal: id => invoke('openConfigTerminal', id),
+  readConfig: id => invoke('readConfig', id), validateConfig: (id, text) => invoke('validateConfig', id, text),
+  saveConfig: (id, text, revision) => invoke('saveConfig', id, text, revision),
+  checkUpdate: () => invoke('checkUpdate'), saveToken: token => invoke('saveToken', token), installUpdate: () => invoke('installUpdate'),
+  onState: callback => subscribe('devenv:state', callback), onLog: callback => subscribe('devenv:log', callback),
+};
+contextBridge.exposeInMainWorld('devenv', api);

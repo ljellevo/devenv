@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+:root {
+  --background: rgba(40, 44, 52, .48); --foreground: #E6EAF0;
+  --primary: #00BB66; --primary-foreground: #14211B;
+  --secondary: #383E4A; --secondary-foreground: #D6DCE5;
+  --muted: #343A45; --muted-foreground: #A4ADBA;
+  --accent: #3A4250; --accent-foreground: #E6EAF0;
+  --destructive: #EF7A79; --border: #454D5A; --input: #505969; --ring: #875FFF;
+  --sidebar: rgba(37, 41, 50, .34); --surface: rgba(48, 54, 65, .56); --surface-hover: rgba(56, 62, 74, .66);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --background: rgba(248, 250, 249, .44); --foreground: #1C2925;
+  --primary: #18634A; --primary-foreground: #FFFFFF;
+  --secondary: #E7EFE9; --secondary-foreground: #2C4D3F;
+  --muted: #EEF2EF; --muted-foreground: #68776E;
+  --accent: #E7EEE9; --accent-foreground: #153B2D;
+  --destructive: #B64440; --border: #DFE6E0; --input: #D8E1DA; --ring: #579776;
+  --sidebar: rgba(238, 243, 239, .32); --surface: rgba(255, 255, 255, .58); --surface-hover: rgba(243, 247, 244, .68);
+  color-scheme: light;
+}
+@theme inline {
+  --color-background: var(--background); --color-foreground: var(--foreground);
+  --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary); --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent); --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive); --color-border: var(--border); --color-input: var(--input); --color-ring: var(--ring);
+}
+* { border-color: var(--border); }
+html, body, #root { min-height: 100%; background: transparent; }
+body { margin: 0; color: var(--foreground); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; -webkit-font-smoothing: antialiased; }
+.app-shell { background: var(--background); }
+button { cursor: pointer; } button:disabled { cursor: default; }
+.drag { -webkit-app-region: drag; } .no-drag, button, input, a, select { -webkit-app-region: no-drag; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+::-webkit-scrollbar { width: 7px; height: 7px; } ::-webkit-scrollbar-thumb { background: #596270; border-radius: 8px; }
+.console::-webkit-scrollbar-thumb { background: #596270; }
+.terminal-panel { color-scheme: dark; }
+@keyframes pulse-dot { 50% { opacity: .35; } }
+.status-pulse { animation: pulse-dot 1.5s infinite; }
