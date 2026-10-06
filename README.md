@@ -11,7 +11,7 @@ npm install
 npm start
 ```
 
-For renderer development with hot reload: `npm run dev`. Restart this command after changing main-process or supervisor code. Build a locally installable app with `npm run package`; the output is under `release/mac-arm64/Devenv.app` on Apple Silicon (or `release/mac/Devenv.app` on Intel). Drag it into Applications. `npm run dist` builds DMGs. Local builds use ad-hoc signing, matching Oppskriftsbanken; public distribution with Developer ID/notarization is not configured.
+For renderer development with hot reload: `npm run dev`. Restart this command after changing main-process or supervisor code. Build a locally installable app with `npm run package`; the output is under `release/mac-arm64/Devenv.app` on Apple Silicon (or `release/mac/Devenv.app` on Intel). Drag it into Applications. `npm run dist` builds DMGs. Local builds and GitHub releases without Apple credentials use ad-hoc signing and may require approval in macOS Privacy & Security.
 
 The app icon and menu bar glyph come from `build/icon.svg` and `build/tray.svg`. After editing either one, run `npm run icons` to regenerate `build/icon.icns`, `build/icon.png`, and the tray PNGs in `src/main`.
 
@@ -104,13 +104,25 @@ Use Devenv instead of the old `resources/dev.sh` scripts for daily startup. Thos
 
 ## Updates and releases
 
-Like Oppskriftsbanken, Devenv checks GitHub Releases and offers a matching DMG for assisted installation. The default repository is **ljellevo/devenv**. Packaged apps check on launch; Settings and the menu bar also offer a manual check.
+Like Oppskriftsbanken, Devenv checks GitHub Releases and offers a matching DMG for assisted installation. The default repository is **ljellevo/devenv**. Packaged apps check four seconds after launch and every three hours while running; Settings and the menu bar also offer a manual check. An available release appears in the app, and installation still requires confirmation.
 
 Public releases work without a token. For a private repository, save a fine-grained GitHub token with read-only **Contents** permission in Settings → Updates. Tokens are stored in a local mode-0600 file rather than Keychain, avoiding repeated Keychain prompts across ad-hoc signed builds. Tokens are never returned to the renderer, logged, or forwarded to asset download hosts. Empty input + Clear removes the saved token.
 
 **Download & install** asks for confirmation, downloads and verifies the asset size and GitHub SHA-256 digest when supplied, stops the active session, opens the DMG, and quits. Drag the new version into Applications. This is the same assisted flow as Oppskriftsbanken, not a silent in-place replacement.
 
 The Release workflow builds arm64 and x64 DMG/ZIP installers. Pushes to `main` increment the latest stable patch tag; manual runs accept a version. The version is applied to the package before building, so the app and release agree. Publishing occurs only when the workflow runs in GitHub; local builds never publish.
+
+For a GitHub release that opens without the macOS security override, join the Apple Developer Program and create a **Developer ID Application** certificate. Export it with its private key as a password-protected `.p12`. Configure these GitHub Actions repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `MAC_CSC_LINK` | Base64-encoded `.p12` certificate and private key |
+| `MAC_CSC_KEY_PASSWORD` | Password used when exporting the `.p12` |
+| `APPLE_ID` | Apple ID used for notarization |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for that Apple ID |
+| `APPLE_TEAM_ID` | Apple Developer team ID |
+
+For `MAC_CSC_LINK`, run `base64 -i /path/to/DeveloperID.p12 | tr -d '\n'` locally and paste the result into the secret. With all five secrets configured, the workflow signs and notarizes the app, then verifies the signatures, stapled tickets, and Gatekeeper acceptance before publishing. With none configured, it publishes an ad-hoc-signed release that requires the macOS **System Settings → Privacy & Security → Open Anyway** override after the first launch attempt. A partial set of secrets fails the build. These credentials must never be committed to the repository. Existing ad-hoc-signed releases are not fixed retroactively; build a new release after configuring the secrets.
 
 ## Data and recovery
 

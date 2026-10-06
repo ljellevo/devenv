@@ -30,7 +30,10 @@ const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL
 const state: AppState = { projects: [], settings: defaults, session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, hasToken: false, theme: themeFromZshrc('') };
 let watchers: FSWatcher[] = [];
 let scanTimer: ReturnType<typeof setTimeout>;
+let updateStartTimer: ReturnType<typeof setTimeout> | undefined;
+let updatePollTimer: ReturnType<typeof setInterval> | undefined;
 let rescan = false;
+const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000;
 
 function publish() {
   if (window && !window.isDestroyed()) window.webContents.send('devenv:state', state);
@@ -223,8 +226,12 @@ async function boot() {
     { label: 'Devenv', submenu: [{ role: 'about' }, { label: 'Check for updates…', click: () => action(() => updater.check(state.settings.releaseRepo)) }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { label: 'Quit Devenv', accelerator: 'Command+Q', click: () => app.quit() }] },
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
   ]));
+  if (app.isPackaged) {
+    const checkForUpdates = () => { if (!quitRequested) void updater.check(state.settings.releaseRepo); };
+    updateStartTimer = setTimeout(checkForUpdates, 4000);
+    updatePollTimer = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+  }
   await scan();
-  if (app.isPackaged) void updater.check(state.settings.releaseRepo);
 }
 app.on('second-instance', show);
 app.on('activate', show);
@@ -237,6 +244,7 @@ app.on('before-quit', event => {
       if (ready) await rpc('stop');
       else if (state.session && !['stopped', 'failed'].includes(state.session.status)) throw new Error('The supervisor is unavailable. Reopen the app to recover the session before quitting.');
       quitting = true; watchers.forEach(w => w.close()); clearTimeout(scanTimer);
+      clearTimeout(updateStartTimer); clearInterval(updatePollTimer);
       if (worker?.connected) worker.disconnect(); app.quit();
     } catch (error) { quitRequested = false; report(error); show(); }
   })();
