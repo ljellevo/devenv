@@ -10,6 +10,7 @@ import { CommandPalette } from './CommandPalette';
 import { Help } from './Help';
 import { ProjectSetup } from './ProjectSetup';
 import { Onboarding } from './Onboarding';
+import { useResolvedAppearance } from './appearance';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { ProjectTree } from './ProjectTree';
 import { InstallTerminal } from './InstallTerminal';
@@ -81,7 +82,8 @@ export function App() {
     const timer = setInterval(() => setLogs(logBuffer.current), 200); return () => clearInterval(timer);
   }, [following]);
   useEffect(() => { if (following) bottom.current?.scrollIntoView({ block: 'end' }); }, [logs, following]);
-  useEffect(() => { document.documentElement.dataset.theme = state?.settings.appearance ?? 'dark'; }, [state?.settings.appearance]);
+  const appearance = useResolvedAppearance(state?.settings.appearance ?? 'dark');
+  useEffect(() => { document.documentElement.dataset.theme = appearance; }, [appearance]);
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPaletteOpen(open => !open); }
@@ -192,7 +194,7 @@ export function App() {
           </div>
         </section>
           </TabsContent>
-          <TabsContent value="config" forceMount className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"><ConfigEditor key={project.id} project={project} visible={view === 'config'} onDirtyChange={setConfigDirty} active={!!running} appearance={state.settings.appearance} /></TabsContent>
+          <TabsContent value="config" forceMount className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"><ConfigEditor key={project.id} project={project} visible={view === 'config'} onDirtyChange={setConfigDirty} active={!!running} appearance={appearance} /></TabsContent>
           {project.install && <TabsContent value="install" forceMount className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"><div className="mb-2 flex items-center justify-between rounded-lg border bg-[var(--surface)] px-4 py-3 text-xs"><div><strong>{state.installState?.projectId === project.id ? state.installState.status : project.installed ? 'Installed' : 'Not installed'}</strong>{state.installState?.projectId === project.id && state.installState.stepId && <span className="ml-2 text-muted-foreground">Step {state.installState.stepIndex! + 1}/{project.install.steps.length}: {state.installState.stepId}</span>}{state.installState?.projectId === project.id && state.installState.notes && <p className="mt-1 text-muted-foreground">{state.installState.notes}</p>}</div><span className="text-muted-foreground">{project.install.steps.length} steps</span></div>{state.installState?.projectId === project.id && state.installState.status === 'failed' && <div className="mb-2 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900"><p>{state.installState.error}</p><div className="mt-2 flex gap-2">{state.installState.completedStepIds.length < project.install.steps.length && <Button size="sm" onClick={() => installAction('resume')}>Retry failed step</Button>}<Button size="sm" variant="outline" onClick={() => installAction('restart')}>Restart all steps</Button></div></div>}<div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-[#404651]"><InstallTerminal key={project.id} active={view === 'install' && installing} output={state.installState?.projectId === project.id ? state.installOutput : ''} /></div></TabsContent>}
         </Tabs>
       </>}

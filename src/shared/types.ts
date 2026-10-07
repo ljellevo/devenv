@@ -16,7 +16,8 @@ export interface Session {
   startedAt: string; services: ServiceState[]; error?: string;
 }
 export interface ProjectFolder { id: string; name: string; parentId: string | null }
-export interface Settings { roots: string[]; exclusions: string[]; shell: string; releaseRepo: string; appearance: 'light' | 'dark'; projectFolders: ProjectFolder[]; projectFolderAssignments: Record<string, string>; projectTreeOrder: Record<string, string[]>; sidebarPinned: boolean; onboardingCompleted: boolean }
+export type Appearance = 'light' | 'dark' | 'system';
+export interface Settings { roots: string[]; exclusions: string[]; shell: string; releaseRepo: string; appearance: Appearance; projectFolders: ProjectFolder[]; projectFolderAssignments: Record<string, string>; projectTreeOrder: Record<string, string[]>; sidebarPinned: boolean; onboardingCompleted: boolean }
 export interface LogEntry { seq: number; time: string; service: string; stream: 'stdout' | 'stderr' | 'system'; text: string }
 export interface ConfigDocument { path: string; text: string; revision: string }
 export interface ConfigValidation { valid: boolean; message?: string; line?: number; column?: number }

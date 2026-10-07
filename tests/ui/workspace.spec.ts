@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
     if (new URLSearchParams(location.search).has('empty')) projects.splice(0);
     if (new URLSearchParams(location.search).has('install')) { projects[1].install = { cwd: '/Users/developer/code/dealroom/resources', steps: [{ id: 'dependencies', command: 'npm install', cwd: '/Users/developer/code/dealroom/resources', env: {}, timeout: 1800, interactive: true }], recipeHash: 'test' }; projects[1].installed = true; }
     const defaultSettings = { roots: ['/Users/developer/code'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true };
-    if (new URLSearchParams(location.search).has('onboarding')) Object.assign(defaultSettings, { roots: [], onboardingCompleted: false });
+    if (new URLSearchParams(location.search).has('onboarding')) Object.assign(defaultSettings, { roots: [], appearance: 'system', onboardingCompleted: false });
     const state: any = { projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, hasToken: false };
     let listener = (_: any) => {}, logListener = (_: any) => {};
     (window as any).calls = [];
@@ -166,6 +166,12 @@ test('first launch walks through the tutorial and asks for a projects folder', a
   const tutorial = page.getByRole('dialog');
   await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
+  await expect(tutorial.getByRole('heading', { name: 'Light or dark?' })).toBeVisible();
+  await expect(tutorial.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+  await tutorial.getByRole('button', { name: 'Light' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(tutorial.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true');
+  await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByRole('heading', { name: 'Run, watch, and switch' })).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByRole('heading', { name: 'One small file per project' })).toBeVisible();
@@ -187,7 +193,7 @@ test('first launch walks through the tutorial and asks for a projects folder', a
   await expect(tutorial.getByText(/that project’s own folder/)).toBeVisible();
   await tutorial.getByRole('button', { name: 'Finish' }).click();
   await expect(tutorial).toBeHidden();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: ['/Users/developer/projects'], onboardingCompleted: true });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: ['/Users/developer/projects'], appearance: 'light', onboardingCompleted: true });
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Your projects, in one place.' })).toBeVisible();
   await expect(page.getByRole('dialog')).toBeHidden();
@@ -203,13 +209,28 @@ test('the tutorial can be skipped without choosing a folder', async ({ page }) =
 test('the last tutorial step adds a project, shows its setup prompt, and closes', async ({ page }) => {
   await page.goto('/?onboarding&empty');
   const tutorial = page.getByRole('dialog');
-  for (let i = 0; i < 3; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
+  for (let i = 0; i < 4; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
   await tutorial.getByRole('button', { name: 'Skip for now' }).click();
   await tutorial.getByRole('button', { name: 'Add a project' }).click();
   await expect(page.getByRole('dialog', { name: 'Finish your project configuration' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Want to add a project?' })).toBeHidden();
   await expect(page.getByRole('dialog')).toHaveCount(1);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ onboardingCompleted: true });
+});
+
+test('the System appearance follows the operating system color scheme', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
+  await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();
+  const appearance = page.getByRole('group', { name: 'Appearance' });
+  await expect(appearance.getByRole('button')).toHaveText(['Light', 'System', 'Dark']);
+  await appearance.getByRole('button', { name: 'System' }).click();
+  await expect(appearance.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ appearance: 'system' });
 });
 
 test('resetting the tutorial in Settings shows it on the next launch', async ({ page }) => {
@@ -224,7 +245,7 @@ test('resetting the tutorial in Settings shows it on the next launch', async ({ 
   await page.reload();
   const tutorial = page.getByRole('dialog');
   await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
-  for (let i = 0; i < 3; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
+  for (let i = 0; i < 4; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByText('/Users/developer/code')).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await tutorial.getByRole('button', { name: 'Finish' }).click();

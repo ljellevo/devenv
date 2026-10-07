@@ -4,7 +4,7 @@ Devenv starts, stops, and switches local development projects. Each project has 
 
 ## Find or create projects
 
-On first launch, a short tutorial explains how Devenv works and asks you to choose the folder that contains your projects, and offers to add a project. You can skip it and add search folders later.
+On first launch, a short tutorial explains how Devenv works, asks whether you want a light, dark, or system appearance, asks you to choose the folder that contains your projects, and offers to add a project. You can skip it and add search folders later.
 
 Press **⌘K** or click the search field in the window header. The command menu lists Add a project, every discovered project, Add search folder, Help, and Settings. The active project appears first. Selecting a project shows its details; it does not start it.
 
@@ -77,7 +77,7 @@ The window header’s **Finder** button reveals the selected project’s config 
 
 ## Settings and appearance
 
-Settings lets you manage search folders, excluded directory names, and the shell Devenv uses. Stop the active session before changing shells. Choose light or dark appearance there; the built-in Terminal remains dark, and the Config editor uses a Nord palette. Devenv reads terminal accent colors from your `.zshrc` without executing it. **Reset tutorial** shows the first-launch tutorial again the next time Devenv launches.
+Settings lets you manage search folders, excluded directory names, and the shell Devenv uses. Stop the active session before changing shells. Choose a light, dark, or system appearance there (System follows your Mac and switches with it); the built-in Terminal remains dark, and the Config editor uses a Nord palette. Devenv reads terminal accent colors from your `.zshrc` without executing it. **Reset tutorial** shows the first-launch tutorial again the next time Devenv launches.
 
 ## Updates and menu bar
 
