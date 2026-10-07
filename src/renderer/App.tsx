@@ -16,7 +16,7 @@ import { Onboarding } from './Onboarding';
 import { useResolvedAppearance } from './appearance';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { ProjectTree } from './ProjectTree';
-import { InstallTerminal } from './InstallTerminal';
+import { InstallPanel } from './InstallPanel';
 import { terminalLabel } from '../shared/terminals';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { AppState, LogEntry, ServiceStatus } from '../shared/types';
@@ -199,7 +199,7 @@ export function App() {
         </section>
           </TabsContent>
           <TabsContent value="config" forceMount className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"><ConfigEditor key={project.id} project={project} visible={view === 'config'} onDirtyChange={setConfigDirty} active={!!running} appearance={appearance} host={state.hostPlatform} /></TabsContent>
-          {project.install && <TabsContent value="install" forceMount className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"><div className="mb-2 flex items-center justify-between rounded-lg border bg-[var(--surface)] px-4 py-3 text-xs"><div><strong>{state.installState?.projectId === project.id ? state.installState.status : project.installed ? 'Installed' : 'Not installed'}</strong>{state.installState?.projectId === project.id && state.installState.stepId && <span className="ml-2 text-muted-foreground">Step {state.installState.stepIndex! + 1}/{project.install.steps.length}: {state.installState.stepId}</span>}{state.installState?.projectId === project.id && state.installState.notes && <p className="mt-1 text-muted-foreground">{state.installState.notes}</p>}</div><span className="text-muted-foreground">{project.install.steps.length} steps</span></div>{state.installState?.projectId === project.id && state.installState.status === 'failed' && <div className="mb-2 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900"><p>{state.installState.error}</p><div className="mt-2 flex gap-2">{state.installState.completedStepIds.length < project.install.steps.length && <Button size="sm" onClick={() => installAction('resume')}>Retry failed step</Button>}<Button size="sm" variant="outline" onClick={() => installAction('restart')}>Restart all steps</Button></div></div>}<div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-[#404651]"><InstallTerminal key={project.id} active={view === 'install' && installing} output={state.installState?.projectId === project.id ? state.installOutput : ''} /></div></TabsContent>}
+          {project.install && <TabsContent value="install" forceMount className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"><InstallPanel key={project.id} project={project} install={project.install} installState={state.installState} output={state.installOutput} active={view === 'install'} onInstall={installAction} /></TabsContent>}
         </Tabs>
       </>}
       <footer className="flex h-8 shrink-0 items-center justify-between border-t px-7 text-[10px] text-muted-foreground"><span>Local commands. A shared routine.</span><span>{state.scanning ? 'Discovering projects…' : `${state.settings.roots.length} search folder${state.settings.roots.length === 1 ? '' : 's'}`}<span className="mx-2 opacity-30">|</span>{platformName(state.hostPlatform)}</span></footer>

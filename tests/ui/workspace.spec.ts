@@ -18,9 +18,11 @@ test.beforeEach(async ({ page }) => {
     const projects: any[] = [{ id: 'intivo', path: '/Users/developer/code/intivo/resources/devenv.toml', name: 'Intivo', services: [service('postgres', 5433), service('documents', 3200), service('api', 3100), service('web', 5173), service('admin', 5174), service('home', 3000)] }, { id: 'dealroom', path: '/Users/developer/code/dealroom/resources/devenv.toml', name: 'Dealroom', services: [service('api', 3100), service('auth', 3200), service('app', 3000)] }];
     if (new URLSearchParams(location.search).has('empty')) projects.splice(0);
     if (new URLSearchParams(location.search).has('install')) { projects[1].install = { cwd: '/Users/developer/code/dealroom/resources', steps: [{ id: 'dependencies', command: 'npm install', cwd: '/Users/developer/code/dealroom/resources', env: {}, timeout: 1800, interactive: true }], recipeHash: 'test' }; projects[1].installed = true; }
+    if (new URLSearchParams(location.search).has('installing')) { const cwd = '/Users/developer/code/dealroom/resources'; projects[1].install = { cwd, steps: [{ id: 'dependencies', command: 'npm install', cwd, env: {}, timeout: 1800, interactive: false }, { id: 'database', command: 'npm run db:setup', cwd, env: {}, timeout: 600, interactive: true, notes: 'Creates the local Postgres database.' }, { id: 'seed', command: 'npm run db:seed', cwd, env: {}, timeout: 600, interactive: false }], recipeHash: 'test' }; projects[1].installed = false; }
     const defaultSettings = { roots: ['/Users/developer/code'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', terminal: 'ghostty', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true };
     if (new URLSearchParams(location.search).has('onboarding')) Object.assign(defaultSettings, { roots: [], appearance: 'system', terminal: 'terminal', onboardingCompleted: false });
     const state: any = { hostPlatform: new URLSearchParams(location.search).get('platform') || 'macos', projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, hasToken: false, installedTerminals: ['terminal', 'ghostty'] };
+    if (new URLSearchParams(location.search).has('installing')) Object.assign(state, { installOutput: '', installState: { projectId: 'dealroom', status: 'running', stepId: 'database', stepIndex: 1, completedStepIds: ['dependencies'] } });
     let listener = (_: any) => {}, logListener = (_: any) => {};
     (window as any).calls = [];
     if (new URLSearchParams(location.search).has('wsl')) projects.forEach(project => project.executionTarget = { kind: 'wsl', distribution: 'Ubuntu-24.04' });
@@ -92,6 +94,25 @@ test('the project header opens the config folder in Finder or the chosen termina
   await header.getByRole('button', { name: 'Open in Terminal' }).click();
   expect(await page.evaluate(() => (window as any).calls)).toEqual([['finder', 'intivo'], ['config-terminal', 'intivo'], ['config-terminal', 'intivo']]);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ terminal: 'terminal' });
+});
+
+test('Install tab lists steps with progress and can switch to the terminal', async ({ page }) => {
+  await page.goto('/?installing');
+  await page.mouse.move(2, 100);
+  await page.getByRole('navigation', { name: 'Projects' }).getByRole('button', { name: /Dealroom/ }).click();
+  await page.getByRole('tab', { name: 'Install' }).click();
+  const steps = page.getByRole('list', { name: 'Installation steps' });
+  await expect(steps.getByRole('listitem')).toHaveCount(3);
+  await expect(steps.getByRole('listitem').nth(0).getByLabel('Done')).toBeVisible();
+  await expect(steps.getByRole('listitem').nth(1).getByLabel('Running')).toBeVisible();
+  await expect(steps.getByRole('listitem').nth(2).getByLabel('Pending')).toBeVisible();
+  await expect(page.getByText('Creates the local Postgres database.')).toBeVisible();
+  await expect(page.getByLabel('Interactive installation terminal')).toBeHidden();
+  await page.getByRole('button', { name: 'Show terminal' }).click();
+  await expect(page.getByLabel('Interactive installation terminal')).toBeVisible();
+  await expect(steps).toBeHidden();
+  await page.getByRole('button', { name: 'Show steps' }).click();
+  await expect(steps).toBeVisible();
 });
 
 test('settings expose release checks and require an explicit install action', async ({ page }) => {
