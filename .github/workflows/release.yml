@@ -106,7 +106,10 @@ jobs:
             release/*.deb
             release/*.AppImage
           if-no-files-found: error
+  # GitHub-hosted Windows runners cannot run WSL 2, so this needs a prepared self-hosted runner.
+  # It runs only when the repository variable DEVENV_WSL_RUNNER is 'true'; until then releases ship without it.
   wsl:
+    if: vars.DEVENV_WSL_RUNNER == 'true'
     needs: [version, companion]
     runs-on: [self-hosted, Windows, X64, devenv-wsl2]
     timeout-minutes: 30
@@ -128,6 +131,8 @@ jobs:
           DEVENV_TEST_VERSION: ${{ needs.version.outputs.version }}
   publish:
     needs: [version, build, wsl]
+    # A skipped (disabled) WSL job must not block publishing; a failed one still does.
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.wsl.result == 'success' || needs.wsl.result == 'skipped') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4

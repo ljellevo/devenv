@@ -171,7 +171,7 @@ Releases are fetched from the public GitHub repository set in Settings → Updat
 
 **Download & install** asks for confirmation, downloads and verifies the asset size and GitHub SHA-256 digest when supplied, stops installation and the active session, then opens the DMG, NSIS, or deb installer. On macOS, drag the new version into Applications. AppImages are revealed with instructions to quit, replace the old file, and mark the replacement executable. Installation is assisted; it does not silently replace the running app.
 
-The Release workflow builds macOS arm64/x64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage/deb artifacts. A Linux job builds the companion before Windows packaging. Native test jobs and a prepared WSL 2 runner gate publication. Pushes to `main` increment the latest stable patch tag; manual runs accept a version. The version is applied to the package before building, so the app and release agree. Publishing occurs only when the workflow runs in GitHub; local builds never publish.
+The Release workflow builds macOS arm64/x64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage/deb artifacts. A Linux job builds the companion before Windows packaging. Native test jobs gate publication. WSL 2 integration tests need a self-hosted Windows runner (GitHub-hosted runners cannot run WSL 2); they run and gate publication only when the repository variable `DEVENV_WSL_RUNNER` is `true`, so WSL support currently ships without automated WSL validation. Pushes to `main` increment the latest stable patch tag; manual runs accept a version. The version is applied to the package before building, so the app and release agree. Publishing occurs only when the workflow runs in GitHub; local builds never publish.
 
 ## Data and recovery
 
