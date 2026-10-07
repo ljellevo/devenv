@@ -85,7 +85,15 @@ export function signalGroup(pgid: number, signal: NodeJS.Signals) {
 }
 export async function stopGroup(pgid: number, graceMs: number) {
   if (!Number.isSafeInteger(pgid) || pgid <= 1) throw new Error('Invalid owned process ID');
-  if (platform === 'windows') { await exec(jobExecutable(), ['--stop', String(pgid)], { windowsHide: true, timeout: graceMs + 10000 }); return; }
+  if (platform === 'windows') {
+    await exec(jobExecutable(), ['--stop', String(pgid)], { windowsHide: true, timeout: graceMs + 10000 });
+    // --stop returns once the Job is empty, but the helper (pgid) is not a Job member and exits moments later.
+    // Like a POSIX group, the owned tree is only stopped once it is gone; until then it holds its working directory.
+    const deadline = Date.now() + 5000;
+    while (alive(pgid) && Date.now() < deadline) await delay(25);
+    if (alive(pgid)) throw new Error(`Job helper ${pgid} did not exit`);
+    return;
+  }
   const subject = -pgid;
   if (!alive(subject)) return;
   signalGroup(pgid, 'SIGTERM');

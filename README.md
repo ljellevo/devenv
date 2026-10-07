@@ -35,7 +35,7 @@ For WSL, install WSL 2 and a distribution, then use **Settings → Workspace →
 
 ### Linux
 
-Use `Devenv-<version>-linux-x64.AppImage` or `.deb` when available. Make an AppImage executable before running it; install deb packages with your distribution package installer. System Terminal tries xdg-terminal-exec, x-terminal-emulator, GNOME/KDE terminals, Xfce Terminal, and xterm. Ghostty is also supported. See the [Linux guide](docs/help/linux.md).
+Use `Devenv-<version>-linux-x64.AppImage` or `.deb` when available. Make an AppImage executable before running it; install deb packages with your distribution package installer. On Ubuntu 23.10 and later, prefer the deb: it installs the AppArmor profile Chromium's sandbox requires, while the AppImage only starts there with `--no-sandbox`. System Terminal tries xdg-terminal-exec, x-terminal-emulator, GNOME/KDE terminals, Xfce Terminal, and xterm. Ghostty is also supported. See the [Linux guide](docs/help/linux.md).
 
 ## Quick start
 

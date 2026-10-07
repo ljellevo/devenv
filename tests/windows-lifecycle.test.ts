@@ -63,6 +63,8 @@ describe.skipIf(process.platform !== 'win32')('Windows background launchers', ()
       expect(alive(descendant)).toBe(true);
       await stopGroup(child.pid!, 1000);
       expect(alive(descendant)).toBe(false);
+      // The helper retaining the Job must be gone too, or it still holds the working directory.
+      expect(alive(child.pid!)).toBe(false);
     } finally { await stopGroup(child.pid!, 1000); await rm(cwd, { recursive: true, force: true }); }
   }, 20000);
 });

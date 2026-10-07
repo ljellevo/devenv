@@ -9,6 +9,6 @@ try {
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => { child.kill(); reject(new Error('Packaged smoke test timed out')); }, 30000);
     child.once('error', error => { clearTimeout(timer); reject(error); });
-    child.once('exit', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`Packaged smoke test exited ${code}`)); });
+    child.once('exit', (code, signal) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`Packaged smoke test exited ${code ?? `by ${signal}`}`)); });
   });
 } finally { await rm(profile, { recursive: true, force: true }); }

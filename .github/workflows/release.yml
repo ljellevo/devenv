@@ -85,9 +85,14 @@ jobs:
       - run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # Ubuntu 24.04 blocks Chromium's user-namespace sandbox without the AppArmor profile the deb installs.
+      # Use Chromium's setuid sandbox helper instead (the deb's fallback) so the smoke test still runs sandboxed.
       - name: Packaged smoke test (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/smoke-package.mjs
+        run: |
+          sudo chown root:root release/linux-unpacked/chrome-sandbox
+          sudo chmod 4755 release/linux-unpacked/chrome-sandbox
+          xvfb-run -a node scripts/smoke-package.mjs
       - name: Packaged smoke test
         if: runner.os != 'Linux'
         run: node scripts/smoke-package.mjs
