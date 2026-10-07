@@ -7,7 +7,7 @@
   --muted: #343A45; --muted-foreground: #A4ADBA;
   --accent: #3A4250; --accent-foreground: #E6EAF0;
   --destructive: #EF7A79; --border: #454D5A; --input: #505969; --ring: #875FFF;
-  --sidebar: rgba(37, 41, 50, .34); --surface: rgba(48, 54, 65, .56); --surface-hover: rgba(56, 62, 74, .66);
+  --sidebar: #252932; --sidebar-pinned: rgba(37, 41, 50, .34); --dialog: #282C34; --surface: rgba(48, 54, 65, .56); --surface-hover: rgba(56, 62, 74, .66);
   color-scheme: dark;
 }
 :root[data-theme="light"] {
@@ -17,7 +17,7 @@
   --muted: #EEF2EF; --muted-foreground: #68776E;
   --accent: #E7EEE9; --accent-foreground: #153B2D;
   --destructive: #B64440; --border: #DFE6E0; --input: #D8E1DA; --ring: #579776;
-  --sidebar: rgba(238, 243, 239, .32); --surface: rgba(255, 255, 255, .58); --surface-hover: rgba(243, 247, 244, .68);
+  --sidebar: #eef3ef; --sidebar-pinned: rgba(238, 243, 239, .32); --dialog: #f8faf9; --surface: rgba(255, 255, 255, .58); --surface-hover: rgba(243, 247, 244, .68);
   color-scheme: light;
 }
 @theme inline {
@@ -38,5 +38,7 @@ button { cursor: pointer; } button:disabled { cursor: default; }
 ::-webkit-scrollbar { width: 7px; height: 7px; } ::-webkit-scrollbar-thumb { background: #596270; border-radius: 8px; }
 .console::-webkit-scrollbar-thumb { background: #596270; }
 .terminal-panel { color-scheme: dark; }
+.install-terminal .xterm,
+.install-terminal .xterm-viewport { background-color: #282C34 !important; }
 @keyframes pulse-dot { 50% { opacity: .35; } }
 .status-pulse { animation: pulse-dot 1.5s infinite; }

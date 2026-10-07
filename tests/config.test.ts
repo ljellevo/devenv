@@ -1,19 +1,25 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { discover, loadProject } from '../src/core/config';
 const roots: string[] = [];
 async function fixture() { const root = await mkdtemp(join(tmpdir(), 'devenv-config-')); roots.push(root); return root; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 describe('configuration discovery', () => {
-  it('finds resources configs, resolves relative paths, deduplicates roots, and excludes dependencies and symlinks', async () => {
+  it('accepts the Dealroom install recipe and keeps it uninstalled until recorded', async () => {
+    const project = await loadProject(resolve('examples/dealroom.toml'));
+    expect(project.install?.steps.map(step => step.id)).toEqual(['dependencies', 'environment', 'databases', 'api-migration', 'auth-migration', 'stop-install-databases']);
+    expect(project.installed).toBe(false);
+  });
+  it('finds resources configs, resolves relative paths, deduplicates roots, and excludes dependencies, hidden folders, and symlinks', async () => {
     const root = await fixture();
-    for (const dir of ['resources', 'api', 'node_modules/huge', 'build', 'archive']) await mkdir(join(root, dir), { recursive: true });
+    for (const dir of ['resources', 'api', 'node_modules/huge', 'build', 'archive', '.claude/worktrees/feature']) await mkdir(join(root, dir), { recursive: true });
     const config = 'version=1\nname="Example"\n[services.api]\ncwd="../api"\ncommand="npm run dev"\nports=[3100]\n';
     await writeFile(join(root, 'resources/devenv.toml'), config);
     await writeFile(join(root, 'node_modules/huge/devenv.toml'), config);
     await writeFile(join(root, 'archive/devenv.toml'), config);
+    await writeFile(join(root, '.claude/worktrees/feature/devenv.toml'), config);
     await symlink(root, join(root, 'resources/loop'));
     const result = await discover([root, join(root, 'resources')], ['archive']);
     expect(result.errors).toEqual([]); expect(result.projects).toHaveLength(1);

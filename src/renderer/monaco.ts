@@ -2,6 +2,7 @@ export interface MonacoEditor {
   getValue(): string; setValue(value: string): void; getModel(): unknown;
   onDidChangeModelContent(callback: () => void): { dispose(): void };
   addCommand(keybinding: number, callback: () => void): void;
+  layout(): void;
   dispose(): void;
 }
 export interface MonacoApi {

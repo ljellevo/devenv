@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { AppState } from '../shared/types';
 
-export function Settings({ state, open, setOpen, run }: { state: AppState; open: boolean; setOpen(value: boolean): void; run(action: () => Promise<unknown>): void }) {
+export function Settings({ state, open, setOpen, tab, setTab, run }: { state: AppState; open: boolean; setOpen(value: boolean): void; tab: 'workspace' | 'updates'; setTab(value: 'workspace' | 'updates'): void; run(action: () => Promise<unknown>): void }) {
   const [shell, setShell] = useState(state.settings.shell);
   const [repo, setRepo] = useState(state.settings.releaseRepo);
   const [exclusions, setExclusions] = useState(state.settings.exclusions.join(', '));
@@ -15,7 +15,7 @@ export function Settings({ state, open, setOpen, run }: { state: AppState; open:
   const update = state.update;
   return <Dialog open={open} onOpenChange={setOpen}><DialogContent>
     <div><DialogTitle>Settings</DialogTitle><DialogDescription className="mt-2">Your workspace, terminal environment, and app updates.</DialogDescription></div>
-    <Tabs defaultValue="workspace"><TabsList className="w-full"><TabsTrigger value="workspace" className="flex-1">Workspace</TabsTrigger><TabsTrigger value="updates" className="flex-1">Updates {update.status === 'available' && '·'}</TabsTrigger></TabsList>
+    <Tabs value={tab} onValueChange={value => setTab(value as 'workspace' | 'updates')}><TabsList className="w-full"><TabsTrigger value="workspace" className="flex-1">Workspace</TabsTrigger><TabsTrigger value="updates" className="flex-1">Updates {update.status === 'available' && '·'}</TabsTrigger></TabsList>
       <TabsContent value="workspace" className="space-y-5">
         <section><h3 className="mb-3 font-medium">Appearance</h3><div className="inline-flex rounded-lg border bg-muted p-1" role="group" aria-label="Appearance"><Button size="sm" variant={state.settings.appearance === "light" ? "secondary" : "ghost"} aria-pressed={state.settings.appearance === "light"} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, appearance: "light" }))}><Sun />Light</Button><Button size="sm" variant={state.settings.appearance === "dark" ? "secondary" : "ghost"} aria-pressed={state.settings.appearance === "dark"} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, appearance: "dark" }))}><Moon />Dark</Button></div><p className="mt-2 text-xs text-muted-foreground">The terminal always uses its dark theme.</p></section>
         <section><div className="mb-3 flex items-center justify-between"><h3 className="font-medium">Search folders</h3><Button size="sm" variant="outline" onClick={() => run(() => window.devenv.addFolder())}><FolderPlus />Add folder</Button></div>

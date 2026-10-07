@@ -1,11 +1,12 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, ipcMain, dialog, shell, powerMonitor } from 'electron';
 import { fork, type ChildProcess } from 'node:child_process';
-import { mkdir, readFile, writeFile, rename, stat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, stat, realpath } from 'node:fs/promises';
 import { watch, type FSWatcher } from 'node:fs';
 import { join, resolve, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { z } from 'zod';
-import { discover, validateProjectText } from '../core/config';
+import { discover, projectId, validateProjectText } from '../core/config';
+import { coveredBySearchRoot, createProjectConfig } from '../core/project-create';
 import { readConfigDocument, saveConfigDocument } from '../core/config-files';
 import { themeFromZshrc } from '../core/theme';
 import { message } from '../core/process';
@@ -14,7 +15,7 @@ import { startUpdatePolling } from '../core/update-polling';
 import { openGhostty, openGhosttyDirectory } from './ghostty';
 import trayIcon from './trayTemplate.png';
 import trayIcon2x from './trayTemplate@2x.png';
-import type { AppState, ConfigValidation, Settings, Session } from '../shared/types';
+import type { AppState, ConfigValidation, InstallState, Settings, Session } from '../shared/types';
 
 app.setName('Devenv');
 if (process.env.DEVENV_DATA_DIR && !app.isPackaged) app.setPath('userData', resolve(process.env.DEVENV_DATA_DIR));
@@ -27,8 +28,9 @@ let updater: Updater;
 let ready = false, quitting = false, quitRequested = false;
 let sequence = 0;
 const requests = new Map<number, { resolve(value: any): void; reject(error: Error): void }>();
-const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL || '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark' };
-const state: AppState = { projects: [], settings: defaults, session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, hasToken: false, theme: themeFromZshrc('') };
+const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL || '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false };
+const state: AppState = { projects: [], settings: defaults, session: null, installState: null, installOutput: '', scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, hasToken: false, theme: themeFromZshrc('') };
+let installOutputTimer: ReturnType<typeof setTimeout> | undefined;
 let watchers: FSWatcher[] = [];
 let scanTimer: ReturnType<typeof setTimeout>;
 let updatePoller: ReturnType<typeof startUpdatePolling> | undefined;
@@ -47,8 +49,18 @@ function rpc<T = void>(method: string, value?: string): Promise<T> {
     const id = ++sequence; requests.set(id, { resolve, reject }); worker.send({ id, method, value });
   });
 }
+// The pinned sidebar (w-[270px] in App.tsx) sits beside the content, so the window needs room for both.
+const MIN_WIDTH = 1200, PINNED_MIN_WIDTH = 1525, MIN_HEIGHT = 820;
+function minWindowWidth() { return state.settings.sidebarPinned ? PINNED_MIN_WIDTH : MIN_WIDTH; }
+function applyWindowMinimum() {
+  if (!window || window.isDestroyed()) return;
+  const min = minWindowWidth();
+  window.setMinimumSize(min, MIN_HEIGHT);
+  const [width, height] = window.getSize();
+  if (width < min) window.setSize(min, height);
+}
 function createWindow() {
-  window = new BrowserWindow({ width: 1200, height: 820, minWidth: 900, minHeight: 620, title: 'Devenv', titleBarStyle: 'hiddenInset', transparent: true, vibrancy: 'menu', visualEffectState: 'active', backgroundColor: '#00000000', webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  window = new BrowserWindow({ width: Math.max(1400, minWindowWidth()), height: MIN_HEIGHT, minWidth: minWindowWidth(), minHeight: MIN_HEIGHT, title: 'Devenv', titleBarStyle: 'hiddenInset', transparent: true, vibrancy: 'menu', visualEffectState: 'active', backgroundColor: '#00000000', webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
   const url = !app.isPackaged && process.env.DEVENV_RENDERER_URL;
@@ -69,9 +81,9 @@ function updateTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: active ? `${session.project.name} · ${session.status}` : 'No active project', enabled: false },
     { type: 'separator' },
-    ...state.projects.map(project => ({ label: project.name, type: 'checkbox' as const, checked: !!active && session.project.id === project.id, enabled: !project.error && ready && !['starting', 'stopping'].includes(session?.status ?? ''), click: () => action(() => startProject(project.id)) })),
+    ...state.projects.map(project => ({ label: project.name, type: 'checkbox' as const, checked: !!active && session.project.id === project.id, enabled: !project.error && !project.draft && ready && !['starting', 'stopping'].includes(session?.status ?? ''), click: () => action(() => project.install && !project.installed ? installProject(project.id) : startProject(project.id)) })),
     { type: 'separator' },
-    { label: 'Stop session', enabled: !!active, click: () => action(() => rpc('stop')) },
+    { label: 'Stop project', enabled: !!active, click: () => action(() => rpc('stop')) },
     { label: 'Open in Ghostty', enabled: !!active, click: () => action(terminal) },
     { label: 'Show Devenv', click: show },
     { label: 'Check for updates', click: () => { show(); action(() => updater.check(state.settings.releaseRepo)); } },
@@ -87,7 +99,20 @@ function trayImage() {
 }
 async function saveSettings(settings: Settings) {
   const previous = state.settings;
-  const next = z.object({ roots: z.array(z.string().min(1)).max(30), exclusions: z.array(z.string().min(1)).max(100), shell: z.string().min(1), releaseRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), appearance: z.enum(['light', 'dark']) }).strict().parse(settings);
+  const next = z.object({ roots: z.array(z.string().min(1)).max(30), exclusions: z.array(z.string().min(1)).max(100), shell: z.string().min(1), releaseRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), appearance: z.enum(['light', 'dark']), projectFolders: z.array(z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(80), parentId: z.string().uuid().nullable() }).strict()).max(200), projectFolderAssignments: z.record(z.string().uuid()), projectTreeOrder: z.record(z.array(z.string().min(1).max(100)).max(5000)), sidebarPinned: z.boolean() }).strict().parse(settings);
+  const folderIds = new Set(next.projectFolders.map(folder => folder.id));
+  if (folderIds.size !== next.projectFolders.length) throw new Error('Project folders must have unique IDs.');
+  for (const folder of next.projectFolders) {
+    const seen = new Set([folder.id]);
+    let parentId = folder.parentId;
+    while (parentId) {
+      if (!folderIds.has(parentId) || seen.has(parentId)) throw new Error('Project folders have an invalid parent.');
+      seen.add(parentId);
+      parentId = next.projectFolders.find(item => item.id === parentId)!.parentId;
+    }
+  }
+  if (Object.values(next.projectFolderAssignments).some(id => !folderIds.has(id))) throw new Error('A project is assigned to an unknown folder.');
+  if (Object.values(next.projectTreeOrder).some(items => new Set(items).size !== items.length)) throw new Error('Project tree order contains duplicate entries.');
   if (!isAbsolute(next.shell) || !(await stat(next.shell)).isFile()) throw new Error('Shell must be an absolute path to an executable file.');
   if (next.roots.some(root => !isAbsolute(root))) throw new Error('Search folders must use absolute paths.');
   if (next.shell !== previous.shell) {
@@ -99,6 +124,7 @@ async function saveSettings(settings: Settings) {
   await rename(join(root, 'settings.tmp'), join(root, 'settings.json'));
   state.settings = next;
   nativeTheme.themeSource = next.appearance;
+  applyWindowMinimum();
   publish();
   if (next.roots.join('\0') !== previous.roots.join('\0') || next.exclusions.join('\0') !== previous.exclusions.join('\0')) await scan();
 }
@@ -122,9 +148,21 @@ async function startProject(id: string) {
   if (quitRequested) throw new Error('Devenv is shutting down.');
   const project = state.projects.find(p => p.id === id);
   if (!project) throw new Error('Project is no longer available. Refresh the project list.');
+  if (project.draft) throw new Error('Add services to devenv.toml before starting this project.');
+  if (project.error) throw new Error(project.error);
+  if (project.install && !project.installed) throw new Error('Install this project before running it.');
   state.error = undefined; publish();
-  if (state.session?.project.id === id && ['running', 'degraded'].includes(state.session.status)) await rpc('start-all');
-  else await rpc('start', project.path);
+  try {
+    if (state.session?.project.id === id && ['running', 'degraded'].includes(state.session.status)) await rpc('start-all');
+    else await rpc('start', project.path);
+  } catch (error) { await scan(); throw error; }
+}
+async function installProject(id: string, mode: 'resume' | 'restart' = 'resume') {
+  const project = state.projects.find(p => p.id === id);
+  if (!project?.install) throw new Error('This project has no install recipe.');
+  if (project.error || project.draft) throw new Error(project.error || 'Complete devenv.toml before installing.');
+  try { await rpc('install', JSON.stringify({ path: project.path, mode })); }
+  finally { await scan(); }
 }
 async function startProjectService(id: string, name: string) {
   const active = state.session?.project.id === id && ['running', 'degraded'].includes(state.session.status);
@@ -151,12 +189,26 @@ function registerIPC() {
   };
   const handlers: Record<string, (...args: any[]) => unknown> = {
     state: () => state, scan, start: (id: unknown) => startProject(z.string().parse(id)), stop: () => rpc('stop'),
+    install: (id: unknown, mode: unknown) => installProject(z.string().parse(id), z.enum(['resume', 'restart']).default('resume').parse(mode)),
+    cancelInstall: () => rpc('install-cancel'), installInput: (data: unknown) => rpc('install-input', z.string().max(8192).parse(data)),
+    installResize: (cols: unknown, rows: unknown) => rpc('install-resize', JSON.stringify({ cols: z.number().int().min(1).max(500).parse(cols), rows: z.number().int().min(1).max(200).parse(rows) })),
     startService: (id: unknown, name: unknown) => startProjectService(z.string().parse(id), z.string().parse(name)),
     stopService: (id: unknown, name: unknown) => stopProjectService(z.string().parse(id), z.string().parse(name)),
     restart: (name: unknown) => rpc('restart', z.string().parse(name)), logs: (service: unknown) => rpc('logs', z.string().optional().parse(service)),
     saveSettings, addFolder: async () => {
       const selection = await dialog.showOpenDialog(window!, { properties: ['openDirectory', 'multiSelections'], title: 'Choose folders to search for devenv.toml' });
       if (!selection.canceled) await saveSettings({ ...state.settings, roots: [...new Set([...state.settings.roots, ...selection.filePaths])] });
+    },
+    createProject: async (): Promise<{ id: string; path: string } | null> => {
+      const selection = await dialog.showOpenDialog(window!, { properties: ['openDirectory'], title: 'Choose a folder for the new devenv.toml' });
+      if (selection.canceled || !selection.filePaths[0]) return null;
+      const directory = await realpath(selection.filePaths[0]);
+      const covered = await coveredBySearchRoot(directory, state.settings.roots);
+      if (!covered && state.settings.roots.length >= 30) throw new Error('Remove a search folder in Settings before creating another project.');
+      const file = await createProjectConfig(directory);
+      if (covered) await scan();
+      else await saveSettings({ ...state.settings, roots: [...state.settings.roots, directory] });
+      return { id: projectId(file), path: file };
     },
     openTerminal: terminal,
     openConfigFinder: async (id: unknown) => { shell.showItemInFolder((await readConfigDocument(configPath(id))).path); },
@@ -196,7 +248,7 @@ async function boot() {
   await refreshTheme();
   try {
     const saved = JSON.parse(await readFile(join(root, 'settings.json'), 'utf8'));
-    state.settings = { ...defaults, ...saved, appearance: saved.appearance === 'light' ? 'light' : 'dark' };
+    state.settings = { ...defaults, ...saved, appearance: saved.appearance === 'light' ? 'light' : 'dark', projectFolders: Array.isArray(saved.projectFolders) ? saved.projectFolders : [], projectFolderAssignments: saved.projectFolderAssignments && typeof saved.projectFolderAssignments === 'object' ? saved.projectFolderAssignments : {}, projectTreeOrder: saved.projectTreeOrder && typeof saved.projectTreeOrder === 'object' ? saved.projectTreeOrder : {}, sidebarPinned: saved.sidebarPinned === true };
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') state.error = 'Settings could not be read. Defaults are in use.'; }
   nativeTheme.themeSource = state.settings.appearance;
@@ -204,13 +256,18 @@ async function boot() {
   updater = new Updater(root, app.getVersion(), process.arch, update => { state.update = update; publish(); });
   state.hasToken = await updater.hasToken();
   worker = fork(join(__dirname, 'supervisor.cjs'), [root, state.settings.shell], { execPath: process.execPath, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
-  worker.on('message', (data: { id?: number; value?: unknown; error?: string; event?: string; session?: Session; entry?: unknown }) => {
+  worker.on('message', (data: { id?: number; value?: unknown; error?: string; event?: string; session?: Session; entry?: unknown; state?: InstallState; output?: string }) => {
     if (data.id) {
       const request = requests.get(data.id); requests.delete(data.id);
       if (data.error) request?.reject(new Error(data.error)); else request?.resolve(data.value);
     } else if (data.event === 'ready') { ready = true; publish(); }
     else if (data.event === 'state') { state.session = data.session ?? null; publish(); }
     else if (data.event === 'log') window?.webContents.send('devenv:log', data.entry);
+    else if (data.event === 'install-state') { if (data.state?.status === 'running' && data.state.stepIndex === undefined) state.installOutput = ''; state.installState = data.state ?? null; publish(); }
+    else if (data.event === 'install-output') {
+      state.installOutput = (state.installOutput + (data.output ?? '')).slice(-120000);
+      if (!installOutputTimer) installOutputTimer = setTimeout(() => { installOutputTimer = undefined; if (window && !window.isDestroyed()) window.webContents.send('devenv:state', state); }, 80);
+    }
     else if (data.event === 'fatal') report(data.error);
   });
   worker.on('error', report);
@@ -242,7 +299,7 @@ app.on('before-quit', event => {
   event.preventDefault(); if (quitRequested) return; quitRequested = true;
   void (async () => {
     try {
-      if (ready) await rpc('stop');
+      if (ready) { await rpc('install-cancel'); await rpc('stop'); }
       else if (state.session && !['stopped', 'failed'].includes(state.session.status)) throw new Error('The supervisor is unavailable. Reopen the app to recover the session before quitting.');
       quitting = true; watchers.forEach(w => w.close()); clearTimeout(scanTimer);
       updatePoller?.stop(); powerMonitor.off('resume', checkUpdatesIfDue);
