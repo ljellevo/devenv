@@ -166,19 +166,26 @@ test('first launch walks through the tutorial and asks for a projects folder', a
   const tutorial = page.getByRole('dialog');
   await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
-  await expect(tutorial.getByRole('heading', { name: 'One small file per project' })).toBeVisible();
-  await expect(tutorial.getByText(/prompt to paste into a coding agent/)).toBeVisible();
-  await expect(tutorial.getByText(/section with setup steps/)).toBeVisible();
-  await tutorial.getByRole('button', { name: 'Back' }).click();
-  await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
+  await expect(tutorial.getByRole('heading', { name: 'Run, watch, and switch' })).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
+  await expect(tutorial.getByRole('heading', { name: 'One small file per project' })).toBeVisible();
+  await expect(tutorial.getByText(/how they depend on each other/)).toBeVisible();
+  await tutorial.getByRole('button', { name: 'Back' }).click();
+  await expect(tutorial.getByRole('heading', { name: 'Run, watch, and switch' })).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByRole('heading', { name: 'Where are your projects?' })).toBeVisible();
-  await expect(tutorial.getByRole('button', { name: 'Finish' })).toBeDisabled();
+  await expect(tutorial.getByRole('button', { name: 'Next' })).toBeDisabled();
   await tutorial.getByRole('button', { name: 'Choose folder' }).click();
   await expect(tutorial.getByText('/Users/developer/projects')).toBeVisible();
-  await tutorial.getByRole('button', { name: 'Finish' }).click();
+  await tutorial.getByRole('button', { name: 'Remove /Users/developer/projects' }).click();
+  await expect(tutorial.getByText('/Users/developer/projects')).toBeHidden();
+  await expect(tutorial.getByRole('button', { name: 'Next' })).toBeDisabled();
+  await tutorial.getByRole('button', { name: 'Choose folder' }).click();
+  await tutorial.getByRole('button', { name: 'Next' }).click();
+  await expect(tutorial.getByRole('heading', { name: 'Want to add a project?' })).toBeVisible();
+  await expect(tutorial.getByText(/that project’s own folder/)).toBeVisible();
+  await tutorial.getByRole('button', { name: 'Skip and finish' }).click();
   await expect(tutorial).toBeHidden();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: ['/Users/developer/projects'], onboardingCompleted: true });
   await page.reload();
@@ -191,6 +198,18 @@ test('the tutorial can be skipped without choosing a folder', async ({ page }) =
   await page.getByRole('dialog').getByRole('button', { name: 'Skip tutorial' }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: [], onboardingCompleted: true });
+});
+
+test('the last tutorial step adds a project, shows its setup prompt, and closes', async ({ page }) => {
+  await page.goto('/?onboarding&empty');
+  const tutorial = page.getByRole('dialog');
+  for (let i = 0; i < 3; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
+  await tutorial.getByRole('button', { name: 'Skip for now' }).click();
+  await tutorial.getByRole('button', { name: 'Add a project' }).click();
+  await expect(page.getByRole('dialog', { name: 'Finish your project configuration' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Want to add a project?' })).toBeHidden();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ onboardingCompleted: true });
 });
 
 test('resetting the tutorial in Settings shows it on the next launch', async ({ page }) => {
@@ -207,7 +226,7 @@ test('resetting the tutorial in Settings shows it on the next launch', async ({ 
   await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
   for (let i = 0; i < 3; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByText('/Users/developer/code')).toBeVisible();
-  await expect(tutorial.getByRole('button', { name: 'Finish' })).toBeEnabled();
-  await tutorial.getByRole('button', { name: 'Finish' }).click();
+  await tutorial.getByRole('button', { name: 'Next' }).click();
+  await tutorial.getByRole('button', { name: 'Skip and finish' }).click();
   await expect(tutorial).toBeHidden();
 });

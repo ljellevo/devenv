@@ -109,8 +109,8 @@ export function App() {
   const showCreatedProject = (created: { id: string; path: string }) => { setSelected(created.id); setServiceFilter(''); setView('config'); setSidebarOpen(false); setSetupPath(created.path); };
   const createProject = async () => {
     setError(undefined); setBusy(true);
-    try { const created = await window.devenv.createProject(); if (created) { if (configDirty) setPendingAction({ kind: 'created', project: created }); else showCreatedProject(created); } }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    try { const created = await window.devenv.createProject(); if (created) { if (configDirty) setPendingAction({ kind: 'created', project: created }); else showCreatedProject(created); } return !!created; }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); return false; }
     finally { setBusy(false); }
   };
   const confirmDiscard = () => { const action = pendingAction; setPendingAction(null); if (action) setConfigDirty(false); if (action?.kind === 'project') { setSelected(action.id); setServiceFilter(''); setView('services'); setSidebarOpen(false); } else if (action?.kind === 'created') showCreatedProject(action.project); };
@@ -201,7 +201,8 @@ export function App() {
     <CommandPalette state={state} open={paletteOpen} setOpen={setPaletteOpen} onProject={selectProject} onCreate={() => void createProject()} onAddFolder={() => run(() => window.devenv.addFolder())} onHelp={() => setHelpOpen(true)} onSettings={() => { setSettingsTab('workspace'); setSettings(true); }} />
     <Help open={helpOpen} onOpenChange={setHelpOpen} />
     <ProjectSetup path={setupPath} onClose={() => setSetupPath(null)} />
-    <Onboarding state={state} open={!!onboarding} run={run} onDone={() => { setOnboarding(false); run(() => window.devenv.saveSettings({ ...state.settings, onboardingCompleted: true })); }} />
+    {/* Mark onboarding complete before creating: createProject may add a search folder, and saving stale settings afterwards would drop it. */}
+    <Onboarding state={state} open={!!onboarding} run={run} onDone={() => { setOnboarding(false); run(() => window.devenv.saveSettings({ ...state.settings, onboardingCompleted: true })); }} onAddProject={() => run(async () => { await window.devenv.saveSettings({ ...state.settings, onboardingCompleted: true }); if (await createProject()) setOnboarding(false); })} />
     <Dialog open={!!pendingAction} onOpenChange={open => { if (!open) setPendingAction(null); }}><DialogContent><DialogTitle>Discard unsaved configuration edits?</DialogTitle><DialogDescription>Your edits have not been saved to devenv.toml.</DialogDescription><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setPendingAction(null)}>Keep editing</Button><Button variant="destructive" onClick={confirmDiscard}>Discard and continue</Button></div></DialogContent></Dialog>
     {settings && <Settings state={state} open={settings} setOpen={setSettings} tab={settingsTab} setTab={setSettingsTab} run={run} />}
   </div>;

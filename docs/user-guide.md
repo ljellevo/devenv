@@ -4,7 +4,7 @@ Devenv starts, stops, and switches local development projects. Each project has 
 
 ## Find or create projects
 
-On first launch, a short tutorial explains how Devenv works and asks you to choose the folder that contains your projects. You can skip it and add search folders later.
+On first launch, a short tutorial explains how Devenv works and asks you to choose the folder that contains your projects, and offers to add a project. You can skip it and add search folders later.
 
 Press **⌘K** or click the search field in the window header. The command menu lists Add a project, every discovered project, Add search folder, Help, and Settings. The active project appears first. Selecting a project shows its details; it does not start it.
 
