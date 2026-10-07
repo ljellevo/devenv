@@ -63,6 +63,8 @@ test('start, view logs, open the terminal app, switch, and stop through the shar
   await page.getByRole('button', { name: 'Run project', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Project actions' })).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Projects' }).getByText('Running · 6 services')).toBeVisible();
+  // The hover sidebar covers the tabs until it finishes closing; clicking sooner re-opens it.
+  await expect(page.locator('aside')).toHaveClass(/-translate-x-full/);
   await page.getByRole('tab', { name: 'Terminal' }).click();
   await expect(page.getByText('API listening on http://localhost:3100')).toBeVisible();
   await page.locator('.terminal-panel').getByRole('button', { name: 'Open in Ghostty' }).click();
@@ -283,17 +285,31 @@ test('Settings fits the default window without scrolling', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
   await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByText('/Users/developer/oss')).toBeVisible();
-  for (const tab of ['Workspace', 'Updates']) {
+  for (const tab of ['General', 'Workspace', 'Updates']) {
     await dialog.getByRole('tab', { name: tab }).click();
+    if (tab === 'Workspace') await expect(dialog.getByText('/Users/developer/oss')).toBeVisible();
     expect(await dialog.evaluate(el => el.scrollHeight - el.clientHeight), `${tab} tab scrolls`).toBeLessThanOrEqual(0);
   }
 });
 
-test('Save workspace settings is enabled only when the workspace settings change', async ({ page }) => {
+test('Settings opens on General and saves the shell and workspace fields only when they change', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
   await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('tab', { name: 'General' })).toHaveAttribute('data-state', 'active');
+  await expect(dialog.getByRole('group', { name: 'Appearance' })).toBeVisible();
+  await expect(dialog.getByRole('group', { name: 'Terminal app' }).getByRole('button')).toHaveCount(3);
+  await expect(dialog.getByRole('button', { name: 'Reset tutorial' })).toBeVisible();
+  const saveShell = dialog.getByRole('button', { name: 'Save', exact: true });
+  await expect(saveShell).toBeDisabled();
+  await page.getByLabel('Shell').fill('/bin/bash');
+  await expect(saveShell).toBeEnabled();
+  await saveShell.click();
+  await expect(saveShell).toBeDisabled();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ shell: '/bin/bash' });
+  await dialog.getByRole('tab', { name: 'Workspace' }).click();
+  await expect(page.getByLabel('Shell')).toBeHidden();
   const save = page.getByRole('button', { name: 'Save workspace settings' });
   const exclusions = page.getByLabel('Additional excluded folder names');
   await expect(save).toBeDisabled();
@@ -301,9 +317,40 @@ test('Save workspace settings is enabled only when the workspace settings change
   await expect(save).toBeEnabled();
   await exclusions.fill(' , ');
   await expect(save).toBeDisabled();
-  await page.getByLabel('Shell').fill('/bin/bash');
-  await expect(save).toBeEnabled();
+  await exclusions.fill('archive');
   await save.click();
   await expect(save).toBeDisabled();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ shell: '/bin/bash' });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ exclusions: ['archive'] });
+});
+
+test('closing Settings with unsaved edits asks before discarding them', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
+  const open = async () => { await page.mouse.move(600, 400); await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click(); await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible(); };
+  const confirm = page.getByRole('dialog', { name: 'Discard unsaved settings?' });
+  // Without edits, Settings closes straight away.
+  await open();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // Escape with an edit asks first; Keep editing returns to the edit.
+  await open();
+  await page.getByLabel('Shell').fill('/bin/bash');
+  await page.keyboard.press('Escape');
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(confirm).toBeHidden();
+  await expect(page.getByLabel('Shell')).toHaveValue('/bin/bash');
+  // The close button and a click outside ask too.
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Close dialog' }).first().click();
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: 'Keep editing' }).click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('tab', { name: 'Updates' }).click();
+  await page.getByLabel(/Private repository token/).fill('secret');
+  await page.mouse.click(5, 5);
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await open();
+  await expect(page.getByLabel('Shell')).toHaveValue('/bin/zsh');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings') ?? '{}'))).not.toMatchObject({ shell: '/bin/bash' });
 });

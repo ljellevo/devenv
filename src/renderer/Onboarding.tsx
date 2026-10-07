@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { appearanceOptions } from './appearance';
-import { terminalOptions } from './terminals';
+import { TerminalPicker } from './terminals';
 import type { AppState } from '../shared/types';
 
 const kbd = (key: string) => <kbd className="rounded border px-1.5 py-0.5 text-[10px]">{key}</kbd>;
@@ -34,9 +34,7 @@ export function Onboarding({ state, open, onDone, onAddProject, run }: { state: 
     {step.kind === 'appearance' && <div role="group" aria-label="Appearance" className="grid grid-cols-3 gap-2">
       {appearanceOptions.map(({ value, label, icon: OptionIcon }) => { const selected = state.settings.appearance === value; return <button key={value} type="button" aria-pressed={selected} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, appearance: value }))} className={cn('flex flex-col items-center gap-2 rounded-lg border bg-[var(--surface)] px-3 py-4 text-sm transition-colors hover:bg-[var(--surface-hover)]', selected && 'border-primary ring-1 ring-primary')}><OptionIcon className={cn('size-5', selected ? 'text-primary' : 'text-muted-foreground')} />{label}</button>; })}
     </div>}
-    {step.kind === 'terminal' && <div role="group" aria-label="Terminal app" className="grid grid-cols-3 gap-2">
-      {terminalOptions.map(({ value, label, icon: OptionIcon }) => { const selected = state.settings.terminal === value, found = state.installedTerminals.includes(value); return <button key={value} type="button" aria-pressed={selected} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, terminal: value }))} className={cn('flex flex-col items-center gap-2 rounded-lg border bg-[var(--surface)] px-3 py-4 text-sm transition-colors hover:bg-[var(--surface-hover)]', selected && 'border-primary ring-1 ring-primary')}><OptionIcon className={cn('size-5', selected ? 'text-primary' : 'text-muted-foreground')} />{label}{!found && <span className="-mt-1 text-[10px] text-muted-foreground">Not found</span>}</button>; })}
-    </div>}
+    {step.kind === 'terminal' && <TerminalPicker state={state} run={run} />}
     {step.kind === 'folders' && <section aria-label="Search folders" className="space-y-2">
       {roots.map(root => <div key={root} className="flex items-center gap-2 rounded-md border bg-[var(--surface)] py-1 pl-3 pr-1" title={root}><Check className="size-3.5 shrink-0 text-primary" /><span className="mono flex-1 truncate text-xs">{root}</span><Button size="icon" variant="ghost" className="size-8" aria-label={`Remove ${root}`} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, roots: roots.filter(r => r !== root) }))}><Trash2 /></Button></div>)}
       <Button variant={roots.length ? 'outline' : 'default'} onClick={() => run(() => window.devenv.addFolder())}><FolderPlus />{roots.length ? 'Add another folder' : 'Choose folder'}</Button>

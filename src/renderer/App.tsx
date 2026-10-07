@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Settings } from './Settings';
+import { Settings, type SettingsTab } from './Settings';
 import { ConfigEditor } from './ConfigEditor';
 import { CommandPalette } from './CommandPalette';
 import { Help } from './Help';
@@ -30,7 +30,7 @@ export function App() {
   const [selected, setSelected] = useState<string>();
   const [search, setSearch] = useState('');
   const [settings, setSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'workspace' | 'updates'>('workspace');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const [view, setView] = useState<'services' | 'terminal' | 'config' | 'install'>('services');
   const [installMenu, setInstallMenu] = useState(false);
   const installMenuHost = useRef<HTMLDivElement>(null);
@@ -136,7 +136,7 @@ export function App() {
   const installAction = (mode: 'resume' | 'restart' = 'resume') => { if (!project) return; setView('install'); setInstallMenu(false); run(() => window.devenv.install(project.id, mode)); };
 
   return <div className="app-shell flex h-screen min-h-0 overflow-hidden" style={{ '--terminal-accent': state.theme?.accent ?? '#00FF00', '--terminal-secondary': state.theme?.secondary ?? '#875FFF', '--terminal-background': '#282C34', '--terminal-foreground': state.theme?.foreground ?? '#ABB2BF' } as React.CSSProperties}>
-    {!pinned && <div aria-hidden="true" onMouseEnter={openSidebar} className="fixed inset-y-12 left-0 z-30 w-2" />}
+    {!pinned && <div aria-hidden="true" onMouseEnter={openSidebar} onMouseLeave={closeSidebarSoon} className="fixed inset-y-12 left-0 z-30 w-2" />}
     <aside onMouseEnter={openSidebar} onMouseLeave={closeSidebarSoon} className={cn('z-40 flex w-[270px] shrink-0 flex-col border-r', pinned ? 'relative bg-[var(--sidebar-pinned)]' : 'fixed inset-y-0 left-0 bg-[var(--sidebar)] shadow-xl transition-transform duration-200', pinned || sidebarOpen ? 'translate-x-0' : '-translate-x-full')}>
       <div className="drag h-12 shrink-0" />
       <div className="px-5 pb-7 pt-2"><div className="flex items-center gap-2.5"><div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm"><ArrowLeftRight className="size-4" strokeWidth={2.2} /></div><span className="text-xl font-semibold tracking-tight">devenv<span className="text-[var(--terminal-secondary)]">.</span></span><button type="button" aria-label={pinned ? 'Unpin sidebar' : 'Pin sidebar open'} aria-pressed={pinned} title={pinned ? 'Unpin sidebar' : 'Pin sidebar open'} onClick={togglePinned} className={cn('ml-auto rounded-md p-1.5 hover:bg-[var(--surface-hover)] hover:text-foreground', pinned ? 'text-primary' : 'text-muted-foreground')}>{pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}</button></div><p className="mt-3 text-xs text-muted-foreground">A little order for your local world.</p></div>
@@ -144,7 +144,7 @@ export function App() {
       <ProjectTree projects={state.projects} settings={state.settings} selectedId={project?.id} activeId={active ? session.project.id : undefined} activeStatus={session?.status} search={search} onSelect={selectProject} onDragChange={dragging => { sidebarDragging.current = dragging; if (!dragging && !sidebarHovered.current) closeSidebarSoon(); }} run={run} />
       <div className="p-3"><Button variant="ghost" className="w-full justify-start text-xs text-muted-foreground" onClick={() => run(() => window.devenv.addFolder())}><FolderPlus />Add search folder</Button><Button variant="ghost" className="w-full justify-start text-xs text-muted-foreground" onClick={() => run(() => window.devenv.scan())}><RefreshCw className={cn(state.scanning && 'animate-spin')} />Refresh projects</Button></div>
       {state.update.status === 'available' && <button onClick={() => { setSettingsTab('updates'); setSettings(true); }} className="mx-3 mb-3 rounded-xl border border-primary/30 bg-[var(--surface)] p-3 text-left shadow-sm transition-colors hover:bg-[var(--surface-hover)]"><span className="flex items-center gap-2 text-xs font-semibold text-primary"><span className="size-1.5 rounded-full bg-primary" />Update available</span><span className="mt-1 block text-[11px] text-foreground">Devenv {state.update.latest}</span><span className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">Open Settings to install<ChevronRight className="size-3" /></span></button>}
-      <div className="space-y-1 border-t px-4 py-4"><button onClick={() => { setHelpOpen(true); setSidebarOpen(false); }} className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-xs text-muted-foreground hover:bg-[var(--surface-hover)]"><CircleHelp className="size-4" /><span>Help</span></button><button onClick={() => { setSettingsTab('workspace'); setSettings(true); setSidebarOpen(false); }} className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-xs text-muted-foreground hover:bg-[var(--surface-hover)]"><Settings2 className="size-4" /><span>Settings</span><span className="ml-auto mono text-[10px]">v{state.update.current}</span>{state.update.status === 'available' && <span className="size-1.5 rounded-full bg-primary" />}</button></div>
+      <div className="space-y-1 border-t px-4 py-4"><button onClick={() => { setHelpOpen(true); setSidebarOpen(false); }} className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-xs text-muted-foreground hover:bg-[var(--surface-hover)]"><CircleHelp className="size-4" /><span>Help</span></button><button onClick={() => { setSettingsTab('general'); setSettings(true); setSidebarOpen(false); }} className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-xs text-muted-foreground hover:bg-[var(--surface-hover)]"><Settings2 className="size-4" /><span>Settings</span><span className="ml-auto mono text-[10px]">v{state.update.current}</span>{state.update.status === 'available' && <span className="size-1.5 rounded-full bg-primary" />}</button></div>
     </aside>
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="drag grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_clamp(420px,36vw,480px)_minmax(0,1fr)] items-center gap-3 px-7">
@@ -199,7 +199,7 @@ export function App() {
       </>}
       <footer className="flex h-8 shrink-0 items-center justify-between border-t px-7 text-[10px] text-muted-foreground"><span>Local commands. A shared routine.</span><span>{state.scanning ? 'Discovering projects…' : `${state.settings.roots.length} search folder${state.settings.roots.length === 1 ? '' : 's'}`}<span className="mx-2 opacity-30">|</span>macOS</span></footer>
     </main>
-    <CommandPalette state={state} open={paletteOpen} setOpen={setPaletteOpen} onProject={selectProject} onCreate={() => void createProject()} onAddFolder={() => run(() => window.devenv.addFolder())} onHelp={() => setHelpOpen(true)} onSettings={() => { setSettingsTab('workspace'); setSettings(true); }} />
+    <CommandPalette state={state} open={paletteOpen} setOpen={setPaletteOpen} onProject={selectProject} onCreate={() => void createProject()} onAddFolder={() => run(() => window.devenv.addFolder())} onHelp={() => setHelpOpen(true)} onSettings={() => { setSettingsTab('general'); setSettings(true); }} />
     <Help open={helpOpen} onOpenChange={setHelpOpen} />
     <ProjectSetup path={setupPath} onClose={() => setSetupPath(null)} />
     {/* Mark onboarding complete before creating: createProject may add a search folder, and saving stale settings afterwards would drop it. */}

@@ -77,7 +77,7 @@ The Terminal tab shows captured service output. Filter by service or text, pause
 
 ## Settings and appearance
 
-Settings lets you manage search folders, excluded directory names, and the shell Devenv uses. Stop the active session before changing shells. Pick your terminal app there (Terminal, iTerm2, or Ghostty; onboarding asks the first time). Choose a light, dark, or system appearance there (System follows your Mac and switches with it); the built-in Terminal remains dark, and the Config editor uses a Nord palette. Devenv reads terminal accent colors from your `.zshrc` without executing it. **Reset tutorial** shows the first-launch tutorial again the next time Devenv launches.
+Settings has three tabs. **General** holds the appearance (light, dark, or system; System follows your Mac and switches with it), your terminal app (Terminal, iTerm2, or Ghostty; onboarding asks the first time), the shell Devenv uses, and **Reset tutorial**, which shows the first-launch tutorial again the next time Devenv launches. Stop the active session before changing shells. The built-in Terminal remains dark, and the Config editor uses a Nord palette. Devenv reads terminal accent colors from your `.zshrc` without executing it. **Workspace** manages search folders and excluded directory names, and **Updates** covers releases. Appearance, terminal app, and folder changes save immediately; if you close Settings with other unsaved edits, Devenv asks before discarding them.
 
 ## Updates and menu bar
 
