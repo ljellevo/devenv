@@ -18,13 +18,14 @@ test.beforeEach(async ({ page }) => {
     const projects: any[] = [{ id: 'intivo', path: '/Users/developer/code/intivo/resources/devenv.toml', name: 'Intivo', services: [service('postgres', 5433), service('documents', 3200), service('api', 3100), service('web', 5173), service('admin', 5174), service('home', 3000)] }, { id: 'dealroom', path: '/Users/developer/code/dealroom/resources/devenv.toml', name: 'Dealroom', services: [service('api', 3100), service('auth', 3200), service('app', 3000)] }];
     if (new URLSearchParams(location.search).has('empty')) projects.splice(0);
     if (new URLSearchParams(location.search).has('install')) { projects[1].install = { cwd: '/Users/developer/code/dealroom/resources', steps: [{ id: 'dependencies', command: 'npm install', cwd: '/Users/developer/code/dealroom/resources', env: {}, timeout: 1800, interactive: true }], recipeHash: 'test' }; projects[1].installed = true; }
-    const defaultSettings = { roots: ['/Users/developer/code'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false };
+    const defaultSettings = { roots: ['/Users/developer/code'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true };
+    if (new URLSearchParams(location.search).has('onboarding')) Object.assign(defaultSettings, { roots: [], onboardingCompleted: false });
     const state: any = { projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, hasToken: false };
     let listener = (_: any) => {}, logListener = (_: any) => {};
     (window as any).calls = [];
     window.devenv = {
       state: async () => structuredClone(state), onState: callback => { listener = callback; return () => {}; }, onLog: callback => { logListener = callback; return () => {}; }, onInstallOutput: () => () => {},
-      scan: async () => {}, addFolder: async () => {}, createProject: async () => { const created = { id: 'new-project', path: '/Users/developer/code/New Project/devenv.toml', name: 'New Project', services: [], draft: true }; projects.push(created); state.projects = projects; listener(structuredClone(state)); return { id: created.id, path: created.path }; },
+      scan: async () => {}, addFolder: async () => { state.settings = { ...state.settings, roots: [...state.settings.roots, '/Users/developer/projects'] }; listener(structuredClone(state)); }, createProject: async () => { const created = { id: 'new-project', path: '/Users/developer/code/New Project/devenv.toml', name: 'New Project', services: [], draft: true }; projects.push(created); state.projects = projects; listener(structuredClone(state)); return { id: created.id, path: created.path }; },
       start: async id => { (window as any).calls.push(['start', id]); const project = projects.find(p => p.id === id)!; state.session = { id: 'session-' + id, project, status: 'running', startedAt: new Date().toISOString(), services: project.services.map((s: any) => ({ name: s.name, status: 'ready', pid: 123 })) }; listener(structuredClone(state)); setTimeout(() => logListener({ seq: 1, time: new Date().toISOString(), service: 'api', stream: 'stdout', text: 'API listening on http://localhost:3100\n' }), 100); },
       install: async (id, mode) => { (window as any).calls.push(['install', id, mode]); }, cancelInstall: async () => {}, installInput: async () => {}, installResize: async () => {},
       stop: async () => { (window as any).calls.push(['stop']); state.session.status = 'stopped'; state.session.services.forEach((s: any) => s.status = 'stopped'); listener(structuredClone(state)); },
@@ -158,4 +159,53 @@ test('adding a project opens a copyable setup prompt and its Config tab', async 
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Config' })).toHaveAttribute('data-state', 'active');
   await expect(page.getByRole('heading', { name: 'New Project', exact: true })).toBeVisible();
+});
+
+test('first launch walks through the tutorial and asks for a projects folder', async ({ page }) => {
+  await page.goto('/?onboarding&empty');
+  const tutorial = page.getByRole('dialog');
+  await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
+  await tutorial.getByRole('button', { name: 'Next' }).click();
+  await expect(tutorial.getByRole('heading', { name: 'One small file per project' })).toBeVisible();
+  await tutorial.getByRole('button', { name: 'Back' }).click();
+  await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
+  await tutorial.getByRole('button', { name: 'Next' }).click();
+  await tutorial.getByRole('button', { name: 'Next' }).click();
+  await tutorial.getByRole('button', { name: 'Next' }).click();
+  await expect(tutorial.getByRole('heading', { name: 'Where are your projects?' })).toBeVisible();
+  await expect(tutorial.getByRole('button', { name: 'Finish' })).toBeDisabled();
+  await tutorial.getByRole('button', { name: 'Choose folder' }).click();
+  await expect(tutorial.getByText('/Users/developer/projects')).toBeVisible();
+  await tutorial.getByRole('button', { name: 'Finish' }).click();
+  await expect(tutorial).toBeHidden();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: ['/Users/developer/projects'], onboardingCompleted: true });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Your projects, in one place.' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toBeHidden();
+});
+
+test('the tutorial can be skipped without choosing a folder', async ({ page }) => {
+  await page.goto('/?onboarding&empty');
+  await page.getByRole('dialog').getByRole('button', { name: 'Skip tutorial' }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: [], onboardingCompleted: true });
+});
+
+test('resetting the tutorial in Settings shows it on the next launch', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
+  await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();
+  await page.getByRole('button', { name: 'Reset tutorial' }).click();
+  await expect(page.getByText('The tutorial will show the next time Devenv launches.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset tutorial' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Welcome to Devenv' })).toBeHidden();
+  await page.reload();
+  const tutorial = page.getByRole('dialog');
+  await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
+  for (let i = 0; i < 3; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
+  await expect(tutorial.getByText('/Users/developer/code')).toBeVisible();
+  await expect(tutorial.getByRole('button', { name: 'Finish' })).toBeEnabled();
+  await tutorial.getByRole('button', { name: 'Finish' }).click();
+  await expect(tutorial).toBeHidden();
 });

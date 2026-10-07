@@ -4,6 +4,8 @@ Devenv starts, stops, and switches local development projects. Each project has 
 
 ## Find or create projects
 
+On first launch, a short tutorial explains how Devenv works and asks you to choose the folder that contains your projects. You can skip it and add search folders later.
+
 Press **⌘K** or click the search field in the window header. The command menu lists Add a project, every discovered project, Add search folder, Help, and Settings. The active project appears first. Selecting a project shows its details; it does not start it.
 
 Choose **Add search folder** to let Devenv find `devenv.toml` in that folder and its subfolders. The scanner skips hidden folders (names starting with `.`, such as `.claude/worktrees`) and common dependency, cache, and build directories such as `node_modules` and `dist`. You can add exclusions in Settings and refresh the project list from the sidebar.
@@ -75,7 +77,7 @@ The window header’s **Finder** button reveals the selected project’s config 
 
 ## Settings and appearance
 
-Settings lets you manage search folders, excluded directory names, and the shell Devenv uses. Stop the active session before changing shells. Choose light or dark appearance there; the built-in Terminal remains dark, and the Config editor uses a Nord palette. Devenv reads terminal accent colors from your `.zshrc` without executing it.
+Settings lets you manage search folders, excluded directory names, and the shell Devenv uses. Stop the active session before changing shells. Choose light or dark appearance there; the built-in Terminal remains dark, and the Config editor uses a Nord palette. Devenv reads terminal accent colors from your `.zshrc` without executing it. **Reset tutorial** shows the first-launch tutorial again the next time Devenv launches.
 
 ## Updates and menu bar
 
