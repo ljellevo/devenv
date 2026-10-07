@@ -73,7 +73,7 @@ Paths such as `cwd` and `env_file` are relative to the TOML file. Services can u
 
 The Terminal tab shows captured service output. Filter by service or text, pause or follow new lines, and copy visible logs. Clicking a service in the Services tab opens its filtered logs. **Open in Ghostty** opens read-only log tabs for the active session; closing those tabs does not stop services.
 
-The window header’s **Finder** button reveals the selected project’s config file. Its **Terminal** button opens a new Ghostty window in the config directory without starting a session. If Ghostty or macOS Automation access is unavailable, use the built-in Terminal tab.
+The **Finder** button beside the project name reveals the selected project’s config file. Its **Terminal** button opens a new Ghostty window in the config directory without starting a session. If Ghostty or macOS Automation access is unavailable, use the built-in Terminal tab.
 
 ## Settings and appearance
 
