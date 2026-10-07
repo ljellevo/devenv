@@ -251,3 +251,35 @@ test('resetting the tutorial in Settings shows it on the next launch', async ({ 
   await tutorial.getByRole('button', { name: 'Finish' }).click();
   await expect(tutorial).toBeHidden();
 });
+
+test('Settings fits the default window without scrolling', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('devenv-test-settings', JSON.stringify({ roots: ['/Users/developer/code', '/Users/developer/work', '/Users/developer/oss'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true })));
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
+  await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('/Users/developer/oss')).toBeVisible();
+  for (const tab of ['Workspace', 'Updates']) {
+    await dialog.getByRole('tab', { name: tab }).click();
+    expect(await dialog.evaluate(el => el.scrollHeight - el.clientHeight), `${tab} tab scrolls`).toBeLessThanOrEqual(0);
+  }
+});
+
+test('Save workspace settings is enabled only when the workspace settings change', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
+  await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();
+  const save = page.getByRole('button', { name: 'Save workspace settings' });
+  const exclusions = page.getByLabel('Additional excluded folder names');
+  await expect(save).toBeDisabled();
+  await exclusions.fill('archive, backups');
+  await expect(save).toBeEnabled();
+  await exclusions.fill(' , ');
+  await expect(save).toBeDisabled();
+  await page.getByLabel('Shell').fill('/bin/bash');
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(save).toBeDisabled();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ shell: '/bin/bash' });
+});

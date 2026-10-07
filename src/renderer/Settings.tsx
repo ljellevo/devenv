@@ -14,7 +14,9 @@ export function Settings({ state, open, setOpen, tab, setTab, run }: { state: Ap
   const [token, setToken] = useState('');
   const [confirmInstall, setConfirmInstall] = useState(false);
   const update = state.update;
-  return <Dialog open={open} onOpenChange={setOpen}><DialogContent>
+  const nextExclusions = exclusions.split(',').map(s => s.trim()).filter(Boolean);
+  const workspaceDirty = shell !== state.settings.shell || nextExclusions.join('\n') !== state.settings.exclusions.join('\n');
+  return <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[calc(100vh-3rem)]">
     <div><DialogTitle>Settings</DialogTitle><DialogDescription className="mt-2">Your workspace, terminal environment, and app updates.</DialogDescription></div>
     <Tabs value={tab} onValueChange={value => setTab(value as 'workspace' | 'updates')}><TabsList className="w-full"><TabsTrigger value="workspace" className="flex-1">Workspace</TabsTrigger><TabsTrigger value="updates" className="flex-1">Updates {update.status === 'available' && '·'}</TabsTrigger></TabsList>
       <TabsContent value="workspace" className="space-y-5">
@@ -26,7 +28,7 @@ export function Settings({ state, open, setOpen, tab, setTab, run }: { state: Ap
         </section>
         <label className="block space-y-2"><span className="font-medium">Additional excluded folder names</span><Input value={exclusions} onChange={e => setExclusions(e.target.value)} placeholder="archive, backups" /></label>
         <label className="block space-y-2"><span className="font-medium">Shell</span><Input value={shell} onChange={e => setShell(e.target.value)} /><span className="block text-xs text-muted-foreground">Your login environment supplies PATH. Stop the active session before changing shells.</span></label>
-        <Button onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, shell, exclusions: exclusions.split(',').map(s => s.trim()).filter(Boolean) }))}><Check />Save workspace settings</Button>
+        <Button disabled={!workspaceDirty} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, shell, exclusions: nextExclusions }))}><Check />Save workspace settings</Button>
       </TabsContent>
       <TabsContent value="updates" className="space-y-5">
         <div className="rounded-lg border bg-[var(--surface)] p-4"><div className="flex items-center justify-between"><div><div className="font-medium">Devenv</div><div className="mt-1 text-xs text-muted-foreground">Installed version {update.current}</div>{update.checkedAt && <div className="mt-1 text-xs text-muted-foreground">Last checked {new Date(update.checkedAt).toLocaleString()}</div>}</div><Github className="size-5 text-muted-foreground" /></div></div>
