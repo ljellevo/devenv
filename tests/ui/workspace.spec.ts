@@ -167,6 +167,8 @@ test('first launch walks through the tutorial and asks for a projects folder', a
   await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByRole('heading', { name: 'One small file per project' })).toBeVisible();
+  await expect(tutorial.getByText(/prompt to paste into a coding agent/)).toBeVisible();
+  await expect(tutorial.getByText(/section with setup steps/)).toBeVisible();
   await tutorial.getByRole('button', { name: 'Back' }).click();
   await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
