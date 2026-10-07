@@ -57,6 +57,15 @@ test('shows Reinstall project in the Run project action menu', async ({ page }) 
   await page.getByRole('button', { name: 'Project actions' }).click();
   await page.getByRole('menuitem', { name: 'Reinstall project' }).click();
   expect(await page.evaluate(() => (window as any).calls)).toEqual([['install', 'dealroom', 'restart']]);
+  await expect(page.getByRole('tab', { name: 'Install' })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('Run project switches to the Services tab', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('tab', { name: 'Terminal' }).click();
+  await page.getByRole('button', { name: 'Run project' }).click();
+  await expect(page.getByRole('tab', { name: 'Services' })).toHaveAttribute('aria-selected', 'true');
+  expect((await page.evaluate(() => (window as any).calls))[0][0]).toBe('start');
 });
 
 test('start, view logs, open the terminal app, switch, and stop through the shared API', async ({ page }) => {

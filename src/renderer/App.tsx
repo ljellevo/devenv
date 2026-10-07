@@ -139,6 +139,7 @@ export function App() {
   const missingServices = !!running && services.some(s => s.enabled && ['stopped', 'failed', 'pending'].includes(session.services.find(item => item.name === s.name)?.status ?? 'stopped'));
   const installing = !!project && state.installState?.projectId === project.id && state.installState.status === 'running';
   const installAction = (mode: 'resume' | 'restart' = 'resume') => { if (!project) return; setView('install'); setInstallMenu(false); run(() => window.devenv.install(project.id, mode)); };
+  const runAction = () => { if (!project) return; setView('services'); run(() => window.devenv.start(project.id)); };
 
   return <div className="app-shell flex h-screen min-h-0 overflow-hidden" style={{ '--terminal-accent': state.theme?.accent ?? '#00FF00', '--terminal-secondary': state.theme?.secondary ?? '#875FFF', '--terminal-background': '#282C34', '--terminal-foreground': state.theme?.foreground ?? '#ABB2BF' } as React.CSSProperties}>
     {!pinned && <div aria-hidden="true" onMouseEnter={openSidebar} onMouseLeave={closeSidebarSoon} className="fixed inset-y-12 left-0 z-30 w-2" />}
@@ -161,7 +162,7 @@ export function App() {
           <div className="flex items-center">
             {installing ? <Button variant="ghost" className={stopButtonClass} size="sm" onClick={() => void window.devenv.cancelInstall()}><Square className="size-3" />Cancel install</Button>
               : running ? <Button variant="ghost" className={stopButtonClass} size="sm" disabled={session.status === 'stopping'} onClick={() => run(() => window.devenv.stop())}><Square className="size-3" />{session.status === 'starting' ? 'Cancel startup' : 'Stop project'}</Button>
-              : <Button size="sm" className="rounded-r-none" disabled={busy || transitioning || !!project.error || !!project.draft} onClick={() => project.install && !project.installed ? installAction() : run(() => window.devenv.start(project.id))}>{project.install && !project.installed ? <Download /> : <Play />}{project.install && !project.installed ? 'Install project' : 'Run project'}</Button>}
+              : <Button size="sm" className="rounded-r-none" disabled={busy || transitioning || !!project.error || !!project.draft} onClick={() => project.install && !project.installed ? installAction() : runAction()}>{project.install && !project.installed ? <Download /> : <Play />}{project.install && !project.installed ? 'Install project' : 'Run project'}</Button>}
             {!installing && !running && <div ref={installMenuHost} className="relative">
               <Button variant="default" size="sm" className="rounded-l-none border-l border-primary-foreground/25 px-2" aria-label="Project actions" aria-haspopup="menu" aria-expanded={installMenu} onClick={() => setInstallMenu(open => !open)}><ChevronDown className="size-3.5" /></Button>
               {installMenu && <div role="menu" className="absolute right-0 top-9 z-50 min-w-40 rounded-lg border bg-[var(--dialog)] p-1 shadow-lg"><button role="menuitem" className="w-full rounded px-3 py-2 text-left text-xs hover:bg-[var(--surface-hover)] disabled:opacity-45" disabled={!project.install} title={project.install ? undefined : "Add an install section to devenv.toml to enable reinstalling"} onClick={() => installAction('restart')}>Reinstall project</button></div>}
