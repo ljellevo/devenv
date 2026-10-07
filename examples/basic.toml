@@ -1,0 +1,17 @@
+# Copy to the root of a Node.js project and adjust the command and port.
+version = 1
+name = "My app"
+
+# Optional: remove this section if dependencies are managed separately.
+[install]
+check_command = "test -d node_modules"
+
+[[install.steps]]
+id = "dependencies"
+command = "npm install"
+timeout = 1800
+interactive = true
+
+[services.web]
+command = "npm run dev"
+ports = [3000]

@@ -15,3 +15,13 @@ playwright-report/
 !.env.*.example
 .DS_Store
 *.log
+
+# Local app state, tool settings, and credentials
+.devenv/
+.claude/
+.codex/
+.aws/
+*.pem
+*.key
+*.p12
+*.pfx

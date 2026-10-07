@@ -6,7 +6,7 @@ Tailwind CSS, and tailwind-merge. `components.json` keeps the project compatible
 with the shadcn CLI for future component additions.
 
 The assisted GitHub Releases update flow and ad-hoc signing approach are based
-on the user's sibling Oppskriftsbanken application. Devenv's implementation
+on the Oppskriftsbanken application. Devenv's implementation
 adds explicit architecture matching, download limits, checksum checks, and
 session shutdown before installation.
 

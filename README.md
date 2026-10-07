@@ -2,18 +2,52 @@
 
 A macOS menu bar app for starting, stopping, and switching entire local development projects. Electron + React + shadcn/ui. Services are ordinary shell commands; Node, Python, Ollama, Docker, and other tools use the same lifecycle.
 
-## Run
+## Installation
 
-Requires macOS and Node 22.12+ (Node 24 recommended).
+Devenv currently runs on **macOS**. Downloadable apps include their own runtime; Node.js is only needed when building from source. Install the runtimes your projects need (such as Node.js, Python, or Docker) separately.
 
-```sh
-npm install
-npm start
+| Operating system | Availability |
+| --- | --- |
+| macOS, Apple Silicon (M-series) | Use the `arm64.dmg` release asset |
+| macOS, Intel | Use the `x64.dmg` release asset |
+| Windows | Not supported yet; no Windows installer |
+| Linux | Not supported yet; no Linux package |
+
+### macOS (Apple Silicon and Intel)
+
+1. Open [GitHub Releases](https://github.com/ljellevo/devenv/releases) and select the latest stable release. If no release is available, use the [developer installation](#developer-installation) below.
+2. Download `Devenv-<version>-arm64.dmg` for Apple Silicon or `Devenv-<version>-x64.dmg` for Intel. **Apple menu → About This Mac** shows your chip or processor.
+3. Open the DMG and drag **Devenv.app** into **Applications**. Eject the disk image, then open Devenv from Applications.
+4. Choose a terminal and add the folder containing your projects. macOS may ask permission to control your selected terminal when you first open external logs.
+
+Builds currently use ad-hoc signing and are **not Developer ID signed or notarized**. If macOS blocks an app you trust, try opening it once, then use **System Settings → Privacy & Security → Open Anyway**, if offered. See [Apple’s guidance on opening apps safely](https://support.apple.com/102445). Do not disable Gatekeeper globally.
+
+To update, use **Settings → Updates** or download a newer DMG from Releases. Quit Devenv before replacing the app in Applications.
+
+### Windows
+
+There is currently no supported Windows installation, including through WSL. The app depends on macOS terminal automation, process inspection, and packaging. Building the Electron UI alone does not provide Windows support.
+
+### Linux
+
+There is currently no supported Linux installation or AppImage, DEB, or RPM. Linux support requires adapting the platform integrations and validating process cleanup before installers can be provided.
+
+## Quick start
+
+Create a `devenv.toml` in the root of a project whose dependencies are already installed:
+
+```toml
+version = 1
+name = "My app"
+
+[services.web]
+command = "npm run dev"
+ports = [3000]
 ```
 
-For renderer development with hot reload: `npm run dev`. Restart this command after changing main-process or supervisor code. Build a locally installable app with `npm run package`; the output is under `release/mac-arm64/Devenv.app` on Apple Silicon (or `release/mac/Devenv.app` on Intel). Drag it into Applications. `npm run dist` builds DMGs. Local builds use ad-hoc signing, matching Oppskriftsbanken; public distribution with Developer ID/notarization is not configured.
+Replace the command and port with your project's actual values, add its parent folder in Devenv, and click **Run project**. A [generic example](examples/basic.toml) also includes an optional dependency installation recipe.
 
-The app icon and menu bar glyph come from `build/icon.svg` and `build/tray.svg`. After editing either one, run `npm run icons` to regenerate `build/icon.icns`, `build/icon.png`, and the tray PNGs in `src/main`.
+Only run configurations you trust: service and installation commands execute with your user account's permissions. Declared ports can cause Devenv to stop other processes or Docker containers using those ports; see [Ports and cleanup](#ports-and-cleanup).
 
 ## Daily use
 
@@ -33,8 +67,6 @@ Closing a log tab does not stop its service. Closing Devenv's window keeps it in
 New nested folders are discovered on app focus or Refresh. Existing config directories and search roots are watched without recursively watching dependency trees. Config changes apply next session; the active session keeps the commands it originally started with.
 
 Use the **Config** tab to edit the selected `devenv.toml` directly in the built-in Monaco editor. Devenv validates changes before saving, uses ⌘S as a shortcut, preserves edits while changing tabs, and asks before discarding unsaved edits when switching projects. If another tool changes the file, reload it before saving. **Services**, **Terminal**, and **Install** are the other tabs; clicking a service opens its filtered output in Terminal, where **Open in …** opens external tabs in your terminal app for the session. Switch between light and dark appearance in Settings. The macOS window uses a translucent, blurred background; the Terminal tab stays dark in either mode. The config editor uses a Nord palette matched to the app appearance. Devenv reads terminal accent colors from the literal `PROMPT` assignment in `~/.zshrc` (falling back to green and violet); it never executes the file.
-
-The [Mekle 2.0 example](examples/mekle-2.0.toml) is ready to place at the root of `mekle-2.0` as `devenv.toml`.
 
 ## Install a cloned project
 
@@ -107,29 +139,19 @@ Keep `ports` synchronized with application configuration. Devenv neither rewrite
 
 A startup failure rolls back what that attempt started. It does not restart previously stopped projects or external processes, undo migrations, or delete database volumes. A later failure keeps other services running with a degraded status. Stop/quit works in reverse dependency order and escalates from SIGTERM to SIGKILL after the configured grace period.
 
-## Intivo and Dealroom
+## Examples
 
-The supplied files are designed for the existing sibling layouts:
+Start with [basic.toml](examples/basic.toml) and adapt its commands and ports to your project. The [Intivo](examples/intivo.toml), [Dealroom](examples/dealroom.toml), and [Mekle 2.0](examples/mekle-2.0.toml) files illustrate larger setups. They depend on separate project layouts and are not runnable demos included in this repository. Intivo and Dealroom expect the configuration in a `resources` folder; Mekle expects it in the project root.
 
-```sh
-cp examples/intivo.toml ../intivo/resources/devenv.toml
-cp examples/dealroom.toml ../dealroom/resources/devenv.toml
-```
-
-Then add the parent folder to Devenv. Existing package dependencies, `.env` files, Docker, and initial database setup must already be prepared as described by those projects.
-
-- **Intivo:** Postgres, document conversion, Ollama wrapper, migration task, API, web, admin, and homepage. Stripe forwarding is present with `enabled = false`; enable it after installing/authenticating the Stripe CLI. The Ollama wrapper retains its existing model download/preload behavior and external-server reuse. If it reuses Ollama, that server is not claimed or stopped by Devenv. It is shown as Running without waiting for model warm-up; the wrapper's logs show when model preparation finishes. Mock inference may complete immediately.
-- **Dealroom:** Postgres, Redis, conversion, auth, storage, payment, API, app, admin, and homepage. Installation and migrations remain manual. Compose services preserve their existing project names and volumes.
-
-Use Devenv instead of the old `resources/dev.sh` scripts for daily startup. Those scripts have independent reclamation logic and cannot share ownership with Devenv.
+Review project-specific installation, migration, and cleanup commands before adapting them. In particular, the Mekle example removes its database container on stop. Do not run another development launcher against the same resources while Devenv owns them.
 
 ## Updates and releases
 
-Like Oppskriftsbanken, Devenv checks GitHub Releases and offers a matching DMG for assisted installation. The default repository is **ljellevo/devenv**. Packaged apps check four seconds after launch and every three hours while running. They also check on focus or wake if the three-hour interval has elapsed. Settings shows the last check time, and Settings and the menu bar offer a manual check. An available release appears in the app, and installation still requires confirmation.
+Devenv checks GitHub Releases and offers a matching DMG for assisted installation. The default repository is **ljellevo/devenv**. Packaged apps check four seconds after launch and every three hours while running. They also check on focus or wake if the three-hour interval has elapsed. Settings shows the last check time, and Settings and the menu bar offer a manual check. An available release appears in the app, and installation still requires confirmation.
 
 Public releases work without a token. For a private repository, save a fine-grained GitHub token with read-only **Contents** permission in Settings → Updates. Tokens are stored in a local mode-0600 file rather than Keychain, avoiding repeated Keychain prompts across ad-hoc signed builds. Tokens are never returned to the renderer, logged, or forwarded to asset download hosts. Empty input + Clear removes the saved token.
 
-**Download & install** asks for confirmation, downloads and verifies the asset size and GitHub SHA-256 digest when supplied, stops the active session, opens the DMG, and quits. Drag the new version into Applications. This is the same assisted flow as Oppskriftsbanken, not a silent in-place replacement.
+**Download & install** asks for confirmation, downloads and verifies the asset size and GitHub SHA-256 digest when supplied, stops the active session, opens the DMG, and quits. Drag the new version into Applications. Installation is assisted; it does not silently replace the running app.
 
 The Release workflow builds arm64 and x64 DMG/ZIP installers. Pushes to `main` increment the latest stable patch tag; manual runs accept a version. The version is applied to the package before building, so the app and release agree. Publishing occurs only when the workflow runs in GitHub; local builds never publish.
 
@@ -139,17 +161,78 @@ Settings, session journal, updater token, and logs live in `~/Library/Applicatio
 
 The supervisor remains alive long enough to clean up after the Electron parent disconnects. A journal allows the next launch to stop resources left by a crash; PIDs are checked against start times and process groups. Ambiguous ownership blocks recovery rather than signalling an unrelated process. A machine power loss cannot run shutdown commands; recovery happens on the next launch. Never remove a recovery journal merely to hide a failed cleanup.
 
-## Checks
+## Developer installation
+
+The supported development environment is **macOS with Node.js 24 and npm**. Use a native Node.js installation matching your Mac's architecture. Get Node.js from the [official download page](https://nodejs.org/en/download). Install Git and the Xcode Command Line Tools if needed:
 
 ```sh
-npm test                 # real fixture subprocesses; deterministic OS-inspection boundary
-npm run test:system      # real macOS process inspection, outside restrictive tool sandboxes
-npm run typecheck
-npm run build
-npm run test:ui          # Playwright; install Chromium first if needed
+xcode-select --install
 ```
 
-Tests never start Intivo or Dealroom, migrate their databases, or reclaim their existing ports. Perform the real-project smoke check on a prepared machine: start Intivo, inspect every service, switch to Dealroom and back, confirm old ports are released and database data remains, then test quit and the external terminal tabs. See [verification notes](docs/verification.md) for the checks performed during implementation.
+Clone the repository (or your fork), install the locked dependencies, and start the app:
+
+```sh
+git clone https://github.com/ljellevo/devenv.git
+cd devenv
+npm ci
+npm start
+```
+
+`npm start` builds the app and launches Electron. `npm ci` downloads Electron and installs the native terminal dependency (`node-pty`); allow install scripts to run. If a native dependency must compile locally, you will also need Python 3 and the Xcode Command Line Tools.
+
+### Development workflow
+
+```sh
+npm run dev
+```
+
+This starts Vite and Electron with renderer hot reload. Restart it after changing main-process, preload, or supervisor code. The dev server uses port `4783`.
+
+For a separate development profile, run:
+
+```sh
+DEVENV_DATA_DIR="$HOME/Library/Application Support/Devenv Dev" npm run dev
+```
+
+The repository's own `devenv.toml` uses that separate profile when launched from an installed Devenv app. Avoid running two instances against the same managed project.
+
+### Checks
+
+```sh
+npm test                 # fixture processes with a simulated OS-inspection boundary
+npm run typecheck
+npm run build
+npx playwright install chromium
+npm run test:ui          # renderer interaction tests using a mocked desktop bridge
+npm run test:system      # real macOS process inspection and fixture lifecycle
+```
+
+Run system tests on a Mac that permits process inspection; restrictive sandboxes can block them. The tests use fixtures and mocks rather than starting the project-specific examples. Before submitting lifecycle changes, also check start, stop, switching, and quit with disposable local services. See [verification notes](docs/verification.md) for historical validation and remaining manual checks.
+
+### Build an installable app
+
+```sh
+npm run package
+```
+
+The app is written to `release/mac-arm64/Devenv.app` on Apple Silicon or `release/mac/Devenv.app` on Intel. Copy it into Applications to install. To build DMGs for both architectures:
+
+```sh
+npm run dist
+```
+
+Artifacts are written to `release/`. Local builds do not publish releases. Signing is ad-hoc; Developer ID signing and notarization are not configured. The release workflow builds both DMG and ZIP assets on GitHub.
+
+### Icons
+
+Edit `build/icon.svg` or `build/tray.svg`, then run:
+
+```sh
+npx playwright install chromium
+npm run icons
+```
+
+This regenerates the PNG/ICNS assets and requires macOS `iconutil`.
 
 ## Code layout
 
@@ -159,3 +242,11 @@ Tests never start Intivo or Dealroom, migrate their databases, or reclaim their 
 - `examples`: project TOMLs; `tests`: lifecycle, configuration, updater, and UI checks.
 
 The public API is the versioned TOML schema. GUI and tray share an internal supervisor protocol. There is no public CLI in this release.
+
+## Contributing
+
+Bug reports and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and [SECURITY.md](SECURITY.md) for security reporting. Include your macOS version, CPU architecture, app version, and a minimal reproduction when reporting a bug. Remove tokens, environment values, and private project details from logs.
+
+## License
+
+[MIT](LICENSE). Bundled and adapted components are listed in [third-party notices](THIRD_PARTY_NOTICES.md).
