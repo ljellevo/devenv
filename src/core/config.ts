@@ -3,7 +3,8 @@ import { dirname, resolve, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import TOML from '@iarna/toml';
 import { z } from 'zod';
-import type { Project, ServiceConfig } from '../shared/types';
+import type { InstallConfig, Project, ServiceConfig } from '../shared/types';
+import { readInstallRecord, recipeHash } from './install-record';
 
 const command = z.string().trim().min(1);
 const serviceSchema = z.object({
@@ -14,24 +15,37 @@ const serviceSchema = z.object({
   startup_timeout: z.number().positive().max(86400).default(60), stop_timeout: z.number().positive().max(300).default(15),
   allow_successful_exit: z.boolean().default(false),
 }).strict();
-const schema = z.object({ version: z.literal(1), name: command, services: z.record(serviceSchema) }).strict();
+const installStepSchema = z.object({ id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/), command, cwd: z.string().optional(), env: z.record(z.string()).default({}), env_file: z.string().optional(), timeout: z.number().positive().max(86400).default(1800), interactive: z.boolean().default(false), notes: z.string().optional() }).strict();
+const installSchema = z.object({ cwd: z.string().default('.'), check_command: command.optional(), steps: z.array(installStepSchema).min(1) }).strict();
+const schema = z.object({ version: z.literal(1), name: command, services: z.record(serviceSchema), install: installSchema.optional() }).strict();
 
 export async function loadProject(file: string): Promise<Project> {
   const path = await realpath(file);
-  return validateProjectText(path, await readFile(path, 'utf8'));
+  const text = await readFile(path, 'utf8');
+  if (!text.trim()) return { id: projectId(path), path, name: basename(dirname(path)), services: [], draft: true };
+  return validateProjectText(path, text);
 }
 
 export async function validateProjectText(file: string, text: string): Promise<Project> {
   const path = await realpath(file);
   const data = schema.parse(TOML.parse(text));
+  let install: InstallConfig | undefined;
+  if (data.install) {
+    const cwd = resolve(dirname(path), data.install.cwd);
+    const ids = data.install.steps.map(step => step.id);
+    if (new Set(ids).size !== ids.length) throw new Error('Install step IDs must be unique');
+    const steps = data.install.steps.map(step => ({ ...step, cwd: resolve(dirname(path), step.cwd ?? data.install!.cwd), env_file: step.env_file ? resolve(dirname(path), step.env_file) : undefined }));
+    const value = { cwd, check_command: data.install.check_command, steps };
+    install = { ...value, recipeHash: recipeHash(value) };
+  }
   const services: ServiceConfig[] = [];
   for (const [name, config] of Object.entries(data.services)) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(name)) throw new Error(`Invalid service name: ${name}. Use letters, digits, - or _.`);
     const cwd = resolve(dirname(path), config.cwd);
     const env_file = config.env_file ? resolve(dirname(path), config.env_file) : undefined;
     if (config.enabled) {
-      if (!(await stat(cwd).catch(() => null))?.isDirectory()) throw new Error(`${name}: directory does not exist: ${cwd}`);
-      if (env_file && !(await stat(env_file).catch(() => null))?.isFile()) throw new Error(`${name}: environment file does not exist: ${env_file}`);
+      if (!install && !(await stat(cwd).catch(() => null))?.isDirectory()) throw new Error(`${name}: directory does not exist: ${cwd}`);
+      if (!install && env_file && !(await stat(env_file).catch(() => null))?.isFile()) throw new Error(`${name}: environment file does not exist: ${env_file}`);
       if (config.mode === 'background' && (!config.stop_command || !config.ready_command)) throw new Error(`${name}: background services require stop_command and ready_command`);
       if (config.mode === 'task' && (config.ready_command || config.ports.length)) throw new Error(`${name}: tasks cannot declare readiness or listening ports`);
     }
@@ -50,7 +64,15 @@ export async function validateProjectText(file: string, text: string): Promise<P
     }
   }
   dependencyOrder(enabled);
-  return { id: projectId(path), path, name: data.name, services };
+  const record = install && await readInstallRecord(path, install.recipeHash);
+  return { id: projectId(path), path, name: data.name, services, install, installed: !install || !!record?.installed };
+}
+
+export async function validateRuntimePaths(project: Project): Promise<void> {
+  for (const service of project.services.filter(service => service.enabled)) {
+    if (!(await stat(service.cwd).catch(() => null))?.isDirectory()) throw new Error(`${service.name}: directory does not exist: ${service.cwd}`);
+    if (service.env_file && !(await stat(service.env_file).catch(() => null))?.isFile()) throw new Error(`${service.name}: environment file does not exist: ${service.env_file}`);
+  }
 }
 
 export const projectId = (path: string) => createHash('sha256').update(path).digest('hex').slice(0, 20);

@@ -3,6 +3,50 @@
 version = 1
 name = "Dealroom"
 
+# The local install record is stored beside this file in .devenv/install.json.
+[install]
+cwd = "."
+
+[[install.steps]]
+id = "dependencies"
+command = 'for d in api auth storage payment app admin homepage; do (cd "../$d" && npm install) || exit 1; done'
+timeout = 3600
+interactive = true
+notes = "Install npm packages in each service. Review any npm permission prompts."
+
+[[install.steps]]
+id = "environment"
+command = 'for d in api auth storage payment app admin homepage; do if [ -f "../$d/.env.example" ] && [ ! -f "../$d/.env" ]; then cp "../$d/.env.example" "../$d/.env"; fi; done'
+notes = "Missing .env files are copied from .env.example; existing local settings are preserved."
+
+[[install.steps]]
+id = "databases"
+command = "docker compose up -d postgres redis"
+timeout = 600
+notes = "Docker must be running. Postgres and Redis are needed for the migrations."
+
+[[install.steps]]
+id = "api-migration"
+cwd = "../api"
+command = "npm run migrate"
+timeout = 600
+interactive = true
+notes = "Prisma may ask for a migration name or confirmation."
+
+[[install.steps]]
+id = "auth-migration"
+cwd = "../auth"
+command = "npm run migrate"
+timeout = 600
+interactive = true
+notes = "Apply the identity database migrations."
+
+[[install.steps]]
+id = "stop-install-databases"
+command = "docker compose stop postgres redis"
+timeout = 120
+notes = "The databases will start again with the rest of the project when you click Run project."
+
 [services.postgres]
 command = "docker compose up --no-deps --force-recreate postgres"
 ports = [5433]

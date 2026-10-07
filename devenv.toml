@@ -1,0 +1,11 @@
+version = 1
+name = "Devenv"
+
+[services.desktop]
+cwd = "."
+# Keep the development Electron instance separate from the packaged app managing it.
+command = 'mkdir -p "$HOME/Library/Application Support/Devenv Dev" && DEVENV_DATA_DIR="$HOME/Library/Application Support/Devenv Dev" npm run dev'
+ports = [4783]
+ready_command = "curl --fail --silent --max-time 3 http://127.0.0.1:4783/ > /dev/null"
+startup_timeout = 120
+stop_timeout = 30

@@ -19,8 +19,10 @@ The app icon and menu bar glyph come from `build/icon.svg` and `build/tray.svg`.
 
 1. Put a `devenv.toml` in a project root or its `resources` folder.
 2. Add a search folder in Devenv, for example `~/Documents/code`. Nested configurations are discovered automatically; large dependency and build folders are excluded.
-3. Select a project and click **Start session**. Select another and click **Switch here** to shut down the first and start the second.
+3. Select a project and click **Run project**. Running another project stops the first before starting the second.
 4. Read logs in the app or choose **Open in Ghostty** for one viewer tab per enabled service.
+
+Hover at the left edge to reveal the project sidebar, or press **⌘K** to open the command menu. The menu can add a project, select an existing one, add a search folder, or open Help and Settings. **Add a project** asks for a folder, writes an empty `devenv.toml`, and shows a copyable prompt for an agent to configure it. You can also close the prompt and fill out the Config tab yourself. Devenv never overwrites an existing file. The [in-app user guide](docs/user-guide.md) covers the full workflow.
 
 Each service row also has **Start**, **Stop**, or **Retry**. Starting a service starts any missing dependencies; stopping one stops its active dependents first. Independent services keep running. **Start remaining** fills in a partial session, and stopping its last service ends the session.
 
@@ -30,9 +32,28 @@ Closing a log tab does not stop its service. Closing Devenv's window keeps it in
 
 New nested folders are discovered on app focus or Refresh. Existing config directories and search roots are watched without recursively watching dependency trees. Config changes apply next session; the active session keeps the commands it originally started with.
 
-Use **Config** to edit the selected `devenv.toml` directly in the built-in Monaco editor. Devenv validates changes before saving, uses ⌘S as a shortcut, and asks before discarding unsaved edits. If another tool changes the file, reload it before saving. **Services** and **Terminal** are separate tabs; clicking a service opens its filtered output in Terminal, where **Open in Ghostty** opens external tabs for the session. Switch between light and dark appearance in Settings or with the button in the window header. The macOS window uses a translucent, blurred background; the Terminal tab stays dark in either mode. The smaller config editor uses a Nord palette matched to the app appearance. Devenv reads terminal accent colors from the literal `PROMPT` assignment in `~/.zshrc` (falling back to green and violet); it never executes the file.
+Use the **Config** tab to edit the selected `devenv.toml` directly in the built-in Monaco editor. Devenv validates changes before saving, uses ⌘S as a shortcut, preserves edits while changing tabs, and asks before discarding unsaved edits when switching projects. If another tool changes the file, reload it before saving. **Services**, **Terminal**, and **Install** are the other tabs; clicking a service opens its filtered output in Terminal, where **Open in Ghostty** opens external tabs for the session. Switch between light and dark appearance in Settings. The macOS window uses a translucent, blurred background; the Terminal tab stays dark in either mode. The config editor uses a Nord palette matched to the app appearance. Devenv reads terminal accent colors from the literal `PROMPT` assignment in `~/.zshrc` (falling back to green and violet); it never executes the file.
 
 The [Mekle 2.0 example](examples/mekle-2.0.toml) is ready to place at the root of `mekle-2.0` as `devenv.toml`.
+
+## Install a cloned project
+
+Add an optional `[install]` recipe to `devenv.toml` for dependencies or setup commands. New clones with a recipe show **Install project**. Installation runs steps in order in an interactive in-app terminal, so you can answer CLI prompts. Devenv stops another active project first. A successful install changes the action to **Run project**; running is a separate click. Failed installs offer **Retry failed step** and **Restart all steps**, while the project menu offers **Reinstall project**. Devenv records progress in `.devenv/install.json` beside the TOML and adds `.devenv/` to the local `.gitignore`.
+
+```toml
+[install]
+cwd = "."
+check_command = "test -d node_modules"
+
+[[install.steps]]
+id = "dependencies"
+command = "npm install"
+timeout = 1800
+interactive = true
+notes = "Answer any package manager prompts in the Install tab."
+```
+
+The optional `check_command` is a read-only command that exits zero when dependencies are present. It runs when you click Install or Run, never during discovery. If it passes on a fresh clone, Devenv records installation without running steps. If it fails on Run, no services start. Without a check, the local record determines installation status. Each step supports `id`, `command`, `cwd`, `env`, `env_file`, `timeout`, `interactive`, and `notes`; paths are relative to the TOML file. Changing executable recipe fields invalidates the record. Projects without `[install]` continue to run directly.
 
 ## Configure services
 

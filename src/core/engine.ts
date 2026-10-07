@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
 import type { Project, ServiceConfig, ServiceState, Session } from '../shared/types';
-import { dependencyOrder, loadProject } from './config';
+import { dependencyOrder, loadProject, validateRuntimePaths } from './config';
 import { Logs } from './logs';
 import { MacPorts, type PortController } from './ports';
 import { alive, delay, identity, launch, message, processes, runCommand, sameProcess, serviceEnvironment, stopGroup, type ProcessIdentity } from './process';
@@ -39,6 +39,8 @@ export class Engine extends EventEmitter {
   start(file: string, onlyService?: string) {
     return this.serialize(async () => {
       const project = await loadProject(file); // Validate before stopping anything.
+      if (project.install && !project.installed) throw new Error('Install this project before running it.');
+      await validateRuntimePaths(project);
       const enabled = project.services.filter(s => s.enabled);
       const selected = new Set<string>();
       const include = (name: string) => {

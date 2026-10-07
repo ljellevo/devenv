@@ -1,12 +1,17 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { discover, loadProject } from '../src/core/config';
 const roots: string[] = [];
 async function fixture() { const root = await mkdtemp(join(tmpdir(), 'devenv-config-')); roots.push(root); return root; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 describe('configuration discovery', () => {
+  it('accepts the Dealroom install recipe and keeps it uninstalled until recorded', async () => {
+    const project = await loadProject(resolve('examples/dealroom.toml'));
+    expect(project.install?.steps.map(step => step.id)).toEqual(['dependencies', 'environment', 'databases', 'api-migration', 'auth-migration', 'stop-install-databases']);
+    expect(project.installed).toBe(false);
+  });
   it('finds resources configs, resolves relative paths, deduplicates roots, and excludes dependencies and symlinks', async () => {
     const root = await fixture();
     for (const dir of ['resources', 'api', 'node_modules/huge', 'build', 'archive']) await mkdir(join(root, dir), { recursive: true });
