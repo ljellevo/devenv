@@ -19,9 +19,11 @@ Platform support is implemented for macOS, Windows x64, Linux x64, and WSL 2. Na
 1. Open [GitHub Releases](https://github.com/ljellevo/devenv/releases) and select the latest stable release. If no release is available, use the [developer installation](#developer-installation) below.
 2. Download `Devenv-<version>-arm64.dmg` for Apple Silicon or `Devenv-<version>-x64.dmg` for Intel. **Apple menu → About This Mac** shows your chip or processor.
 3. Open the DMG and drag **Devenv.app** into **Applications**. Eject the disk image, then open Devenv from Applications.
-4. Choose a terminal and add the folder containing your projects. macOS may ask permission to control your selected terminal when you first open external logs.
+4. The first time you open it, macOS warns that it cannot verify the app and blocks it. Click **Done**.
+5. Open **System Settings → Privacy & Security**, scroll down to the Security section, and click **Open Anyway** next to the message about Devenv. Confirm with your password or Touch ID, then click **Open Anyway** again in the dialog that appears. You only need to do this once.
+6. Choose a terminal and add the folder containing your projects. macOS may ask permission to control your selected terminal when you first open external logs.
 
-Builds currently use ad-hoc signing and are **not Developer ID signed or notarized**. If macOS blocks an app you trust, try opening it once, then use **System Settings → Privacy & Security → Open Anyway**, if offered. See [Apple’s guidance on opening apps safely](https://support.apple.com/102445). Do not disable Gatekeeper globally.
+macOS blocks the first launch because builds currently use ad-hoc signing and are **not Developer ID signed or notarized**. See [Apple’s guidance on opening apps safely](https://support.apple.com/102445). Do not disable Gatekeeper globally.
 
 To update, use **Settings → Updates** or download a newer DMG from Releases. Quit Devenv before replacing the app in Applications.
 
@@ -73,7 +75,7 @@ Use the **Config** tab to edit the selected `devenv.toml` directly in the built-
 
 ## Install a cloned project
 
-Add an optional `[install]` recipe to `devenv.toml` for dependencies or setup commands. New clones with a recipe show **Install project**. Installation runs steps in order in an interactive in-app terminal, so you can answer CLI prompts. Devenv stops another active project first. A successful install changes the action to **Run project**; running is a separate click. Failed installs offer **Retry failed step** and **Restart all steps**, while the project menu offers **Reinstall project**. Devenv records progress in `.devenv/install.json` beside the TOML and adds `.devenv/` to the local `.gitignore`.
+Add an optional `[install]` recipe to `devenv.toml` for dependencies or setup commands. New clones with a recipe show **Install project**. Installation runs steps in order in the Install tab, which shows a spinner on the running step and a checkmark on each finished one. **Show terminal** switches to the interactive in-app terminal so you can watch output and answer CLI prompts. Devenv stops another active project first. A successful install changes the action to **Run project**; running is a separate click. Failed installs offer **Retry failed step** and **Restart all steps**, while the project menu offers **Reinstall project**. Devenv records progress in `.devenv/install.json` beside the TOML and adds `.devenv/` to the local `.gitignore`.
 
 ```toml
 [install]
@@ -165,7 +167,7 @@ Review project-specific installation, migration, and cleanup commands before ada
 
 Devenv checks GitHub Releases and offers a matching platform, architecture, and package for assisted installation. The default repository is **ljellevo/devenv**. Packaged apps check four seconds after launch and every three hours while running. They also check on focus or wake if the three-hour interval has elapsed. Settings shows the last check time, and Settings and the menu bar offer a manual check. An available release appears in the app, and installation still requires confirmation.
 
-Public releases work without a token. For a private repository, save a fine-grained GitHub token with read-only **Contents** permission in Settings → Updates. Tokens are stored in a local mode-0600 file rather than Keychain, avoiding repeated Keychain prompts across ad-hoc signed builds. Tokens are never returned to the renderer, logged, or forwarded to asset download hosts. Empty input + Clear removes the saved token.
+Releases are fetched from the public GitHub repository set in Settings → Updates, so no GitHub token or account is needed.
 
 **Download & install** asks for confirmation, downloads and verifies the asset size and GitHub SHA-256 digest when supplied, stops installation and the active session, then opens the DMG, NSIS, or deb installer. On macOS, drag the new version into Applications. AppImages are revealed with instructions to quit, replace the old file, and mark the replacement executable. Installation is assisted; it does not silently replace the running app.
 
@@ -173,7 +175,7 @@ The Release workflow builds macOS arm64/x64 DMG/ZIP, Windows x64 NSIS, and Linux
 
 ## Data and recovery
 
-Host settings, journal, token, and logs live in Electron’s user data directory (`~/Library/Application Support/Devenv/`, `%APPDATA%/Devenv/`, or `$XDG_CONFIG_HOME/Devenv/`). WSL journals and logs live inside each distribution under `~/.local/share/devenv/supervisor/`. WSL installation records have distribution-specific names. Projects stay where they are. Logs are local and may contain anything your commands print; secrets are not automatically redacted. Each service retains two rotating files and the latest ten sessions are kept within the disk budget.
+Host settings, journal, and logs live in Electron’s user data directory (`~/Library/Application Support/Devenv/`, `%APPDATA%/Devenv/`, or `$XDG_CONFIG_HOME/Devenv/`). WSL journals and logs live inside each distribution under `~/.local/share/devenv/supervisor/`. WSL installation records have distribution-specific names. Projects stay where they are. Logs are local and may contain anything your commands print; secrets are not automatically redacted. Each service retains two rotating files and the latest ten sessions are kept within the disk budget.
 
 The supervisor remains alive long enough to clean up after the Electron parent disconnects. A journal allows the next launch to stop resources left by a crash; PIDs are checked against start times and process groups. Ambiguous ownership blocks recovery rather than signalling an unrelated process. A machine power loss cannot run shutdown commands; recovery happens on the next launch. Never remove a recovery journal merely to hide a failed cleanup.
 

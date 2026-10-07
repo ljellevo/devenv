@@ -14,7 +14,7 @@ describe('assisted updater', () => {
     expect(() => compareVersions('v1.0.1-beta', '1.0.0')).toThrow();
     expect(pickAsset([{ id: 1, name: 'Devenv-1.0.0-x64.dmg', size: 2 }], 'arm64')).toBeUndefined();
   });
-  it('checks public releases, downloads with a checksum, and strips tokens on redirects', async () => {
+  it('checks public releases, downloads with a checksum, and sends API headers only to GitHub', async () => {
     const body = Buffer.from('installer'), requests: Array<{ url: string; options?: RequestInit }> = [];
     const digest = 'sha256:' + createHash('sha256').update(body).digest('hex');
     const { root, updater } = await create((async (input, options) => {
@@ -24,10 +24,10 @@ describe('assisted updater', () => {
       if (url.endsWith('/first-hop')) return new Response(null, { status: 302, headers: { location: 'https://objects.githubusercontent.com/installer' } });
       return new Response(body);
     }) as typeof fetch);
-    await updater.saveToken('secret'); await updater.check('ljellevo/devenv'); expect(updater.state.status).toBe('available');
+    await updater.check('ljellevo/devenv'); expect(updater.state.status).toBe('available');
     expect(updater.state.checkedAt).toEqual(expect.any(String));
     const file = await updater.download('ljellevo/devenv'); expect(await readFile(file)).toEqual(body);
-    expect(requests[1].options?.headers).toHaveProperty('Authorization', 'Bearer secret');
+    expect(requests[1].options?.headers).toHaveProperty('Accept', 'application/octet-stream');
     expect(requests[2].options?.headers).toBeUndefined();
     expect(requests[3].options?.headers).toBeUndefined();
     expect(file.startsWith(root)).toBe(true);
@@ -36,9 +36,9 @@ describe('assisted updater', () => {
     const { updater } = await create((async input => String(input).endsWith('/latest') ? Response.json({ tag_name: 'v0.2.0', assets: [{ id: 4, name: 'Devenv-0.2.0-arm64.dmg', size: 8 }] }) : new Response(null, { status: 302, headers: { location: 'https://example.com/installer' } })) as typeof fetch);
     await updater.check('ljellevo/devenv'); await expect(updater.download('ljellevo/devenv')).rejects.toThrow('Unexpected asset redirect');
   });
-  it('handles private repositories and rejects repo changes between check and download', async () => {
+  it('reports missing releases and rejects repo changes between check and download', async () => {
     const { updater } = await create((async () => new Response(null, { status: 404 })) as typeof fetch);
-    await updater.check('ljellevo/devenv'); expect(updater.state.status).toBe('needsToken');
+    await updater.check('ljellevo/devenv'); expect(updater.state).toMatchObject({ status: 'error', message: 'No release found for this repository.' });
     await expect(updater.download('other/repo')).rejects.toThrow('Check for updates');
   });
 });

@@ -2,7 +2,7 @@
 
 Devenv runs local shell commands with your account's permissions. Only run trusted `devenv.toml` files, including their install recipes, readiness checks, and stop commands. Port reclamation may stop other local processes or containers on declared ports.
 
-Logs can contain secrets printed by your services. An optional GitHub update token is stored in a local file with mode `0600`, not in Keychain. Do not include logs, tokens, `.env` files, or local application data in public reports without reviewing and redacting them.
+Logs can contain secrets printed by your services. Do not include logs, tokens, `.env` files, or local application data in public reports without reviewing and redacting them.
 
 ## Reporting a vulnerability
 

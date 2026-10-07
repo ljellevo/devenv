@@ -24,11 +24,11 @@ export interface LogEntry { seq: number; time: string; service: string; stream: 
 export interface ConfigDocument { path: string; text: string; revision: string }
 export interface ConfigValidation { valid: boolean; message?: string; line?: number; column?: number }
 export interface UpdateInfo {
-  status: 'idle' | 'checking' | 'available' | 'uptodate' | 'needsToken' | 'error' | 'downloading' | 'downloaded';
+  status: 'idle' | 'checking' | 'available' | 'uptodate' | 'error' | 'downloading' | 'downloaded';
   current: string; latest?: string; notes?: string; message?: string; progress?: number; checkedAt?: string;
 }
 export interface TerminalTheme { background: string; foreground: string; accent: string; secondary: string; source: string }
-export interface AppState { hostPlatform: Platform; projects: Project[]; settings: Settings; session: Session | null; installState: InstallState | null; installOutput: string; scanning: boolean; scanErrors: string[]; error?: string; update: UpdateInfo; hasToken: boolean; theme: TerminalTheme; installedTerminals: TerminalApp[] }
+export interface AppState { hostPlatform: Platform; projects: Project[]; settings: Settings; session: Session | null; installState: InstallState | null; installOutput: string; scanning: boolean; scanErrors: string[]; error?: string; update: UpdateInfo; theme: TerminalTheme; installedTerminals: TerminalApp[] }
 export interface DesktopAPI {
   setProjectTarget(id: string, target: ExecutionTarget): Promise<string>;
   wslDistributions(): Promise<Array<{ name: string; version: number }>>; wslDirectories(distribution: string, path?: string): Promise<{ path: string; directories: string[] }>; addWslFolder(distribution: string, path: string): Promise<void>;
@@ -42,7 +42,7 @@ export interface DesktopAPI {
   readConfig(id: string): Promise<ConfigDocument>;
   validateConfig(id: string, text: string): Promise<ConfigValidation>;
   saveConfig(id: string, text: string, revision: string): Promise<ConfigDocument>;
-  checkUpdate(): Promise<void>; saveToken(token: string): Promise<void>; installUpdate(): Promise<void>;
+  checkUpdate(): Promise<void>; installUpdate(): Promise<void>;
   onState(callback: (state: AppState) => void): () => void;
   onLog(callback: (entry: LogEntry) => void): () => void;
   onInstallOutput(callback: (data: string) => void): () => void;

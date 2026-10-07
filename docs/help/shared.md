@@ -60,11 +60,11 @@ The Terminal tab shows captured service output. Filter by service or text, pause
 
 ## Settings and appearance
 
-General settings hold appearance, terminal selection, the service shell, and Reset tutorial. Stop active work before changing the shell. Workspace settings manage search folders and exclusions. Updates settings manage the release repository and optional token. Appearance and folder changes save immediately.
+General settings hold appearance, terminal selection, the service shell, and Reset tutorial. Stop active work before changing the shell. Workspace settings manage search folders and exclusions. Updates settings manage the release repository. Appearance and folder changes save immediately.
 
 ## Updates
 
-Packaged builds check GitHub Releases after launch and every three hours. Check manually in Settings or the tray. Public releases need no token; private repositories can use a fine-grained token with Contents read access, stored locally. Updates verify download size and the release checksum when provided. Active work must stop before installing.
+Packaged builds check GitHub Releases after launch and every three hours. Check manually in Settings or the tray. Releases come from a public repository, so no token is needed. Updates verify download size and the release checksum when provided. Active work must stop before installing.
 
 ## Platform command overrides
 

@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
     if (new URLSearchParams(location.search).has('installing')) { const cwd = '/Users/developer/code/dealroom/resources'; projects[1].install = { cwd, steps: [{ id: 'dependencies', command: 'npm install', cwd, env: {}, timeout: 1800, interactive: false }, { id: 'database', command: 'npm run db:setup', cwd, env: {}, timeout: 600, interactive: true, notes: 'Creates the local Postgres database.' }, { id: 'seed', command: 'npm run db:seed', cwd, env: {}, timeout: 600, interactive: false }], recipeHash: 'test' }; projects[1].installed = false; }
     const defaultSettings = { roots: ['/Users/developer/code'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', terminal: 'ghostty', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true };
     if (new URLSearchParams(location.search).has('onboarding')) Object.assign(defaultSettings, { roots: [], appearance: 'system', terminal: 'terminal', onboardingCompleted: false });
-    const state: any = { hostPlatform: new URLSearchParams(location.search).get('platform') || 'macos', projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, hasToken: false, installedTerminals: ['terminal', 'ghostty'] };
+    const state: any = { hostPlatform: new URLSearchParams(location.search).get('platform') || 'macos', projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, installedTerminals: ['terminal', 'ghostty'] };
     if (new URLSearchParams(location.search).has('installing')) Object.assign(state, { installOutput: '', installState: { projectId: 'dealroom', status: 'running', stepId: 'database', stepIndex: 1, completedStepIds: ['dependencies'] } });
     let listener = (_: any) => {}, logListener = (_: any) => {};
     (window as any).calls = [];
@@ -38,7 +38,7 @@ test.beforeEach(async ({ page }) => {
       openConfigFinder: async id => { (window as any).calls.push(['finder', id]); }, openConfigTerminal: async id => { (window as any).calls.push(['config-terminal', id]); },
       readConfig: async id => ({ path: projects.find(p => p.id === id)!.path, text: 'version = 1\nname = "Intivo"\n\n[services.api]\ncwd = "."\ncommand = "npm run dev"\n', revision: '0'.repeat(64) }),
       validateConfig: async () => ({ valid: true }), saveConfig: async (id, text) => ({ path: projects.find(p => p.id === id)!.path, text, revision: '1'.repeat(64) }),
-      saveSettings: async settings => { state.settings = settings; localStorage.setItem('devenv-test-settings', JSON.stringify(settings)); listener(structuredClone(state)); }, saveToken: async token => { state.hasToken = !!token; listener(structuredClone(state)); },
+      saveSettings: async settings => { state.settings = settings; localStorage.setItem('devenv-test-settings', JSON.stringify(settings)); listener(structuredClone(state)); },
       checkUpdate: async () => { state.update = { current: '0.1.0', status: 'available', latest: 'v0.2.0', notes: 'Better session cleanup.' }; listener(structuredClone(state)); }, installUpdate: async () => { (window as any).calls.push(['update']); },
     };
   });
@@ -377,7 +377,7 @@ test('closing Settings with unsaved edits asks before discarding them', async ({
   await expect(confirm).toBeVisible();
   await confirm.getByRole('button', { name: 'Keep editing' }).click();
   await page.getByRole('dialog', { name: 'Settings' }).getByRole('tab', { name: 'Updates' }).click();
-  await page.getByLabel(/Private repository token/).fill('secret');
+  await page.getByLabel('GitHub release repository').fill('someone/else');
   await page.mouse.click(5, 5);
   await expect(confirm).toBeVisible();
   await confirm.getByRole('button', { name: 'Discard changes' }).click();

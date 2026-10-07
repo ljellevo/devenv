@@ -1,5 +1,5 @@
 import { hostPlatform, type Platform } from '../shared/platform';
-import { mkdir, readFile, writeFile, rename, rm, open } from 'node:fs/promises';
+import { mkdir, rename, rm, open } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { UpdateInfo } from '../shared/types';
@@ -33,20 +33,8 @@ export class Updater {
     this.state = { status: 'idle', current };
   }
   private set(state: Partial<UpdateInfo>) { this.state = { current: this.current, checkedAt: this.checkedAt, ...state } as UpdateInfo; this.emit(this.state); }
-  private async token(): Promise<string | undefined> {
-    try { return (JSON.parse(await readFile(join(this.root, 'updates.json'), 'utf8')) as { token?: string }).token; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
-  }
-  async hasToken() { return !!(await this.token()); }
-  async saveToken(value: string) {
-    await mkdir(this.root, { recursive: true, mode: 0o700 });
-    // Matches Oppskriftsbanken's ad-hoc signed app: local file, no recurring Keychain prompts.
-    await writeFile(join(this.root, 'updates.tmp'), JSON.stringify({ token: value.trim() || undefined }), { mode: 0o600 });
-    await rename(join(this.root, 'updates.tmp'), join(this.root, 'updates.json'));
-  }
-  private async headers(accept: string) {
-    const token = await this.token();
-    return { 'User-Agent': 'Devenv', 'X-GitHub-Api-Version': '2022-11-28', Accept: accept, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  private headers(accept: string) {
+    return { 'User-Agent': 'Devenv', 'X-GitHub-Api-Version': '2022-11-28', Accept: accept };
   }
   async check(repo: string) {
     if (this.busy) return;
@@ -54,10 +42,9 @@ export class Updater {
     this.set({ status: 'checking' });
     try {
       if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('Set a release repository in owner/name format.');
-      const response = await this.request(`https://api.github.com/repos/${repo}/releases/latest`, { headers: await this.headers('application/vnd.github+json'), signal: AbortSignal.timeout(20000), redirect: 'error' });
+      const response = await this.request(`https://api.github.com/repos/${repo}/releases/latest`, { headers: this.headers('application/vnd.github+json'), signal: AbortSignal.timeout(20000), redirect: 'error' });
       if ([401, 403, 404].includes(response.status)) {
-        const token = await this.hasToken();
-        this.set({ status: !token ? 'needsToken' : 'error', message: response.status === 404 ? 'No release found, or this private repository needs a token with Contents read access.' : 'GitHub rejected the request. Check token permissions or rate limits.' }); return;
+        this.set({ status: 'error', message: response.status === 404 ? 'No release found for this repository.' : 'GitHub rejected the request, possibly because of rate limits. Try again later.' }); return;
       }
       if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
       const release = await response.json() as Release;
@@ -88,7 +75,7 @@ export class Updater {
       let response: Response;
       for (let redirects = 0; ; redirects++) {
         response = await this.request(url, {
-          ...(redirects === 0 ? { headers: await this.headers('application/octet-stream') } : {}),
+          ...(redirects === 0 ? { headers: this.headers('application/octet-stream') } : {}),
           redirect: 'manual', signal: AbortSignal.timeout(redirects === 0 ? 30000 : 600000),
         });
         if (![301, 302, 303, 307, 308].includes(response.status)) break;
@@ -98,7 +85,7 @@ export class Updater {
         const next = new URL(location, url);
         if (next.protocol !== 'https:' || !(next.hostname.endsWith('.githubusercontent.com') || next.hostname === 'github.com')) throw new Error('Unexpected asset redirect host.');
         await response.body?.cancel();
-        // Only the initial GitHub API request receives the repository token.
+        // Asset hosts get a plain request, not the GitHub API headers.
         url = next;
       }
       if (!response.ok || !response.body) throw new Error(`Download failed (HTTP ${response.status})`);

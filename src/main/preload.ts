@@ -16,7 +16,7 @@ const api: DesktopAPI = {
   openConfigFinder: id => invoke('openConfigFinder', id), openConfigTerminal: id => invoke('openConfigTerminal', id),
   readConfig: id => invoke('readConfig', id), validateConfig: (id, text) => invoke('validateConfig', id, text),
   saveConfig: (id, text, revision) => invoke('saveConfig', id, text, revision),
-  checkUpdate: () => invoke('checkUpdate'), saveToken: token => invoke('saveToken', token), installUpdate: () => invoke('installUpdate'),
+  checkUpdate: () => invoke('checkUpdate'), installUpdate: () => invoke('installUpdate'),
   onState: callback => subscribe('devenv:state', callback), onLog: callback => subscribe('devenv:log', callback), onInstallOutput: callback => subscribe('devenv:install-output', callback),
 };
 contextBridge.exposeInMainWorld('devenv', api);

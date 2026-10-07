@@ -15,13 +15,12 @@ export function Settings({ state, open, setOpen, tab, setTab, run }: { state: Ap
   const [shell, setShell] = useState(state.settings.shell);
   const [repo, setRepo] = useState(state.settings.releaseRepo);
   const [exclusions, setExclusions] = useState(state.settings.exclusions.join(', '));
-  const [token, setToken] = useState('');
   const [confirmInstall, setConfirmInstall] = useState(false);
   const update = state.update;
   const nextExclusions = exclusions.split(',').map(s => s.trim()).filter(Boolean);
   const exclusionsDirty = nextExclusions.join('\n') !== state.settings.exclusions.join('\n');
   // Pickers and folder changes save immediately; only typed fields can hold unsaved edits.
-  const dirty = shell !== state.settings.shell || exclusionsDirty || repo !== state.settings.releaseRepo || token !== '';
+  const dirty = shell !== state.settings.shell || exclusionsDirty || repo !== state.settings.releaseRepo;
   const [confirmClose, setConfirmClose] = useState(false);
   return <Dialog open={open} onOpenChange={value => { if (!value && dirty) setConfirmClose(true); else setOpen(value); }}><DialogContent className="max-h-[calc(100vh-3rem)]">
     <div><DialogTitle>Settings</DialogTitle><DialogDescription className="mt-2">How Devenv looks and runs, where it finds projects, and app updates.</DialogDescription></div>
@@ -45,7 +44,6 @@ export function Settings({ state, open, setOpen, tab, setTab, run }: { state: Ap
       <TabsContent value="updates" className="space-y-5">
         <div className="rounded-lg border bg-[var(--surface)] p-4"><div className="flex items-center justify-between"><div><div className="font-medium">Devenv</div><div className="mt-1 text-xs text-muted-foreground">Installed version {update.current}</div>{update.checkedAt && <div className="mt-1 text-xs text-muted-foreground">Last checked {new Date(update.checkedAt).toLocaleString()}</div>}</div><Github className="size-5 text-muted-foreground" /></div></div>
         <label className="block space-y-2"><span className="font-medium">GitHub release repository</span><div className="flex gap-2"><Input value={repo} onChange={e => setRepo(e.target.value)} placeholder="owner/repository" /><Button variant="outline" onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, releaseRepo: repo }))}>Save</Button></div></label>
-        <label className="block space-y-2"><span className="font-medium">Private repository token {state.hasToken && <span className="text-xs font-normal text-primary">· saved</span>}</span><div className="flex gap-2"><Input type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} placeholder={state.hasToken ? 'Replace saved token' : 'Optional for public repositories'} /><Button variant="outline" onClick={() => run(async () => { await window.devenv.saveToken(token); setToken(''); })}>{token ? 'Save' : 'Clear'}</Button></div><span className="block text-xs leading-relaxed text-muted-foreground">Use a fine-grained token with read-only Contents access to this repository. Stored locally in a private file, outside your projects, as in Oppskriftsbanken.</span></label>
         <div className="space-y-3 border-t pt-4">
           {update.status === 'available' && <p className="font-medium text-primary">Version {update.latest} is available</p>}
           {update.status === 'uptodate' && <p className="text-primary">You’re up to date.</p>}

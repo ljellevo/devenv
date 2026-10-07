@@ -72,7 +72,7 @@ let transitionQueue: Promise<unknown> = Promise.resolve();
 function transition<T>(action: () => Promise<T>) { const next = transitionQueue.then(action); transitionQueue = next.catch(() => {}); return next; }
 const requests = new Map<number, { resolve(value: any): void; reject(error: Error): void }>();
 const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL || (process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'), releaseRepo: 'ljellevo/devenv', appearance: 'system', terminal: 'terminal', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: false };
-const state: AppState = { hostPlatform: platform, projects: [], settings: defaults, session: null, installState: null, installOutput: '', scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, hasToken: false, theme: themeFromZshrc(''), installedTerminals: [] };
+const state: AppState = { hostPlatform: platform, projects: [], settings: defaults, session: null, installState: null, installOutput: '', scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, theme: themeFromZshrc(''), installedTerminals: [] };
 let installOutputTimer: ReturnType<typeof setTimeout> | undefined;
 let watchers: FSWatcher[] = [];
 let scanTimer: ReturnType<typeof setTimeout>;
@@ -376,7 +376,7 @@ function registerIPC() {
       const result = remote ? await remote.request('save-config', JSON.stringify({ path: configPath(id), text: z.string().max(1024 * 1024).parse(text), revision: z.string().parse(revision) })) : await saveConfigDocument(configPath(id), z.string().parse(text), z.string().parse(revision));
       await scan(); return result;
     },
-    checkUpdate: () => updater.check(state.settings.releaseRepo), saveToken: async (token: unknown) => { await updater.saveToken(z.string().max(1000).parse(token)); state.hasToken = await updater.hasToken(); publish(); },
+    checkUpdate: () => updater.check(state.settings.releaseRepo),
     installUpdate: async () => {
       const path = await updater.download(state.settings.releaseRepo);
       await rpc('install-cancel');
@@ -427,7 +427,6 @@ async function boot() {
   nativeTheme.themeSource = state.settings.appearance;
   // Electron's net.fetch cancels manual redirects, which GitHub uses for release assets.
   updater = new Updater(root, app.getVersion(), process.arch, update => { state.update = update; publish(); });
-  state.hasToken = await updater.hasToken();
   worker = fork(join(__dirname, 'supervisor.cjs'), [root, state.settings.shell], { execPath: process.execPath, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, detached: true, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
   worker.on('message', data => { if (!activeWsl || (data as { id?: number }).id) receiveSupervisor(data as Parameters<typeof receiveSupervisor>[0]); });
   worker.on('error', report);
