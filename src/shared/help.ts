@@ -20,9 +20,10 @@ export const helpManifest: readonly Topic[] = [
   { id: 'wsl', markdown: wsl, visible: c => c.target.kind === 'wsl' },
 ];
 export const headingSlug = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
-export function composeHelp(context: HelpContext) {
-  const topics = helpManifest.filter(topic => topic.visible(context));
-  const markdown = topics.map(topic => topic.markdown).join('\n\n');
+export function composeHelp(context: HelpContext, manifest: readonly Topic[] = helpManifest) {
+  const topics = manifest.filter(topic => topic.visible(context));
+  // Windows checkouts may convert the bundled Markdown to CRLF; headings are matched per LF line.
+  const markdown = topics.map(topic => topic.markdown.replace(/\r\n?/g, '\n')).join('\n\n');
   const counts = new Map<string, number>();
   // Ignore fenced examples when building navigation and anchors.
   let fenced = false;

@@ -45,6 +45,11 @@ describe('offline Help composition', () => {
     if (host !== 'windows') expect(document.markdown).not.toContain('## Windows app');
     if (target.kind === 'native') expect(document.markdown).not.toContain('## WSL project execution');
   });
+  it('finds headings in CRLF checkouts', () => {
+    const document = composeHelp({ host: 'windows', target: { kind: 'native' } }, [{ id: 'crlf', markdown: '# Guide\r\n\r\n## Windows app\r\nText\r\n', visible: () => true }]);
+    expect(document.sections.map(section => section.id)).toEqual(['help-windows-app']);
+    expect(document.markdown).not.toContain('\r');
+  });
 });
 
 it('preserves literal terminal arguments and encodes PowerShell metacharacters', () => {
