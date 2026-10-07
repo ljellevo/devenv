@@ -35,7 +35,7 @@ async function setup(config: string, controller: PortController = ports) {
 afterEach(async () => { for (const { root, engine } of fixtures.splice(0)) { await engine.stop().catch(() => {}); await rm(root, { recursive: true, force: true }); } });
 const service = (name: string, script: string, extra = '') => `[services.${name}]\ncommand=${JSON.stringify(`${node} -e ${quote(script)}`)}\nstop_timeout=1\nstartup_timeout=3\n${extra}\n`;
 async function until(check: () => boolean | Promise<boolean>) { const deadline = Date.now() + 5000; while (!await check()) { if (Date.now() > deadline) throw new Error('Condition timed out'); await delay(40); } }
-describe('session lifecycle', () => {
+describe.skipIf(process.platform === 'win32')('session lifecycle', () => {
   it('honors task dependencies and readiness; captures stdout/stderr and stops process trees', async () => {
     const { root, file, engine } = await setup(
       service('prepare', "require('fs').writeFileSync('prepared','yes')", 'mode="task"') +

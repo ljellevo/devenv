@@ -1,0 +1,7 @@
+## WSL project execution
+
+A WSL project runs discovery, configuration validation, installation, services, Docker commands, and port inspection inside its selected distribution. Commands select the `linux` override. Use Linux paths such as `/home/me/projects` or `/mnt/c/work`; path translation belongs to the selected distribution. Explorer uses the distribution's UNC path.
+
+The companion supervisor runs in the distribution's user-owned Devenv directory. Its version follows the Windows app. If the companion exits or the distribution stops, Devenv reports the error and clears the session. Losing the connection makes the companion stop its owned processes without terminating the distribution. Your next action starts a fresh companion, which recovers its journal before running anything. A removed distribution or inaccessible mount must be repaired first; Devenv never falls back to Windows execution.
+
+Stop services and installation before changing execution targets. Journals, logs, and installation identity belong to the execution target. Before starting, Devenv checks declared ports inside the distribution and on Windows. On the Windows side it ignores WSL's own forwarding processes (such as `wslrelay`), which only mirror Linux listeners, and reports any other owner for you to stop manually. Devenv never stops WSL networking processes. Directory and log actions use the selected Windows terminal to enter the distribution.

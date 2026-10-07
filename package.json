@@ -7,6 +7,7 @@
   "license": "MIT",
   "type": "module",
   "main": "dist/main.cjs",
+  "desktopName": "devenv.desktop",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "start": "npm run build && electron .",
@@ -16,9 +17,11 @@
     "test": "vitest run",
     "test:ui": "playwright test",
     "package": "npm run build && node scripts/package.mjs",
-    "dist": "npm run build && electron-builder --mac dmg",
+    "dist": "npm run build && electron-builder --publish never",
     "postinstall": "node scripts/ensure-electron.mjs",
-    "test:system": "DEVENV_TEST_OS=1 vitest run tests/engine.test.ts"
+    "test:system": "node scripts/test-system.mjs",
+    "build:native": "node scripts/build-native.mjs",
+    "build:companion": "node scripts/build-companion.mjs"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
@@ -64,9 +67,15 @@
     },
     "files": [
       "dist/**/*",
-      "package.json"
+      "package.json",
+      "!dist/companion*/**",
+      "!dist/companion*.tar.gz",
+      "!dist/native/*.obj"
     ],
-    "asarUnpack": ["**/node-pty/**"],
+    "asarUnpack": [
+      "**/node-pty/**",
+      "dist/native/**"
+    ],
     "extraResources": [
       {
         "from": "examples",
@@ -102,7 +111,55 @@
       "title": "${productName} ${arch}",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
-    "artifactName": "${productName}-${version}-${arch}.${ext}"
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-windows-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "dist/companion-linux-x64.tar.gz",
+          "to": "companion-linux-x64.tar.gz"
+        }
+      ]
+    },
+    "linux": {
+      "executableName": "devenv",
+      "syncDesktopName": true,
+      "maintainer": "Devenv <ljellevo@users.noreply.github.com>",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
+    },
+    "appImage": {
+      "artifactName": "${productName}-${version}-linux-x64.${ext}"
+    },
+    "deb": {
+      "artifactName": "${productName}-${version}-linux-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "repository": {
     "type": "git",

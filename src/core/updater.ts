@@ -1,3 +1,4 @@
+import { hostPlatform, type Platform } from '../shared/platform';
 import { mkdir, readFile, writeFile, rename, rm, open } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -14,8 +15,13 @@ export function compareVersions(a: string, b: string): number {
   for (let i = 0; i < 3; i++) if (aa[i] !== bb[i]) return Math.sign(aa[i] - bb[i]);
   return 0;
 }
-export function pickAsset(assets: Asset[], arch: string) {
-  return assets.find(a => a.name.toLowerCase().endsWith('.dmg') && (a.name.includes(`-${arch}.`) || a.name.includes('-universal.')));
+export type PackageFormat = 'dmg' | 'exe' | 'deb' | 'AppImage';
+export const packageFormat = (platform: Platform): PackageFormat => platform === 'macos' ? 'dmg' : platform === 'windows' ? 'exe' : process.env.APPIMAGE ? 'AppImage' : 'deb';
+export function pickAsset(assets: Asset[], arch: string, platform: Platform = 'macos', format: PackageFormat = packageFormat(platform)) {
+  if ((platform === 'macos' && format !== 'dmg') || (platform === 'windows' && format !== 'exe') || (platform === 'linux' && !['deb', 'AppImage'].includes(format))) return undefined;
+  // Linux packaging conventions name x64 as x86_64 (AppImage) or amd64 (deb).
+  const archNames = platform === 'linux' && arch === 'x64' ? ['x64', 'x86_64', 'amd64'] : [arch];
+  return assets.find(a => a.name.endsWith(`.${format}`) && (archNames.some(name => a.name.includes(`-${name}.`)) || (platform === 'macos' && a.name.includes('-universal.'))) && (platform === 'macos' || a.name.includes(`-${platform}-`)));
 }
 export class Updater {
   state: UpdateInfo;
@@ -23,7 +29,7 @@ export class Updater {
   private checkedRepo?: string;
   private busy = false;
   private checkedAt?: string;
-  constructor(private root: string, readonly current: string, private arch: string, private emit: (state: UpdateInfo) => void, private request: typeof fetch = fetch) {
+  constructor(private root: string, readonly current: string, private arch: string, private emit: (state: UpdateInfo) => void, private request: typeof fetch = fetch, private platform: Platform = hostPlatform(process.platform), private format: PackageFormat = packageFormat(platform)) {
     this.state = { status: 'idle', current };
   }
   private set(state: Partial<UpdateInfo>) { this.state = { current: this.current, checkedAt: this.checkedAt, ...state } as UpdateInfo; this.emit(this.state); }
@@ -57,8 +63,8 @@ export class Updater {
       const release = await response.json() as Release;
       if (release.draft || release.prerelease) throw new Error('Only stable releases are supported.');
       if (compareVersions(release.tag_name, this.current) <= 0) { this.set({ status: 'uptodate', latest: release.tag_name }); return; }
-      const asset = pickAsset(release.assets, this.arch);
-      if (!asset || !Number.isSafeInteger(asset.id) || !asset.size || basename(asset.name) !== asset.name) throw new Error(`Release has no valid ${this.arch} DMG installer.`);
+      const asset = pickAsset(release.assets, this.arch, this.platform, this.format);
+      if (!asset || !Number.isSafeInteger(asset.id) || !asset.size || basename(asset.name) !== asset.name) throw new Error(`Release has no valid ${this.platform} ${this.arch} ${this.format} installer.`);
       this.asset = asset; this.checkedRepo = repo;
       this.set({ status: 'available', latest: release.tag_name, notes: release.body });
     } catch (error) { this.set({ status: 'error', message: error instanceof Error ? error.message : String(error) }); }

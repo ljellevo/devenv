@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { Updater, compareVersions, pickAsset } from '../src/core/updater';
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
-async function create(request: typeof fetch) { const root = await mkdtemp(join(tmpdir(), 'devenv-update-')); roots.push(root); return { root, updater: new Updater(root, '0.1.0', 'arm64', () => {}, request) }; }
+async function create(request: typeof fetch) { const root = await mkdtemp(join(tmpdir(), 'devenv-update-')); roots.push(root); return { root, updater: new Updater(root, '0.1.0', 'arm64', () => {}, request, 'macos') }; }
 describe('assisted updater', () => {
   it('compares stable versions and never installs a mismatched architecture', () => {
     expect(compareVersions('v1.10.0', '1.9.9')).toBe(1);

@@ -1,3 +1,4 @@
+import type { Platform, ExecutionTarget, SearchRoot } from './platform';
 export type ServiceMode = 'process' | 'task' | 'background';
 export interface ServiceConfig {
   name: string; cwd: string; command: string; ports: number[]; depends_on: string[];
@@ -7,7 +8,7 @@ export interface ServiceConfig {
 }
 export interface InstallStep { id: string; command: string; cwd: string; env: Record<string, string>; env_file?: string; timeout: number; interactive: boolean; notes?: string }
 export interface InstallConfig { cwd: string; check_command?: string; steps: InstallStep[]; recipeHash: string }
-export interface Project { id: string; path: string; name: string; services: ServiceConfig[]; install?: InstallConfig; installed?: boolean; error?: string; draft?: boolean }
+export interface Project { executionSourcePath?: string; executionTarget?: ExecutionTarget; id: string; path: string; name: string; services: ServiceConfig[]; install?: InstallConfig; installed?: boolean; error?: string; draft?: boolean }
 export interface InstallState { projectId: string; status: 'running' | 'failed' | 'completed' | 'cancelled'; stepId?: string; stepIndex?: number; completedStepIds: string[]; error?: string; notes?: string }
 export type ServiceStatus = 'pending' | 'starting' | 'running' | 'ready' | 'completed' | 'failed' | 'stopping' | 'stopped';
 export interface ServiceState { name: string; status: ServiceStatus; pid?: number; error?: string; exitCode?: number | null }
@@ -17,8 +18,8 @@ export interface Session {
 }
 export interface ProjectFolder { id: string; name: string; parentId: string | null }
 export type Appearance = 'light' | 'dark' | 'system';
-export type TerminalApp = 'terminal' | 'iterm' | 'ghostty';
-export interface Settings { roots: string[]; exclusions: string[]; shell: string; releaseRepo: string; appearance: Appearance; terminal: TerminalApp; projectFolders: ProjectFolder[]; projectFolderAssignments: Record<string, string>; projectTreeOrder: Record<string, string[]>; sidebarPinned: boolean; onboardingCompleted: boolean }
+export type TerminalApp = 'terminal' | 'iterm' | 'ghostty' | 'powershell';
+export interface Settings { projectTargets?: Record<string, ExecutionTarget>; searchRoots?: SearchRoot[]; roots: string[]; exclusions: string[]; shell: string; releaseRepo: string; appearance: Appearance; terminal: TerminalApp; projectFolders: ProjectFolder[]; projectFolderAssignments: Record<string, string>; projectTreeOrder: Record<string, string[]>; sidebarPinned: boolean; onboardingCompleted: boolean }
 export interface LogEntry { seq: number; time: string; service: string; stream: 'stdout' | 'stderr' | 'system'; text: string }
 export interface ConfigDocument { path: string; text: string; revision: string }
 export interface ConfigValidation { valid: boolean; message?: string; line?: number; column?: number }
@@ -27,8 +28,10 @@ export interface UpdateInfo {
   current: string; latest?: string; notes?: string; message?: string; progress?: number; checkedAt?: string;
 }
 export interface TerminalTheme { background: string; foreground: string; accent: string; secondary: string; source: string }
-export interface AppState { projects: Project[]; settings: Settings; session: Session | null; installState: InstallState | null; installOutput: string; scanning: boolean; scanErrors: string[]; error?: string; update: UpdateInfo; hasToken: boolean; theme: TerminalTheme; installedTerminals: TerminalApp[] }
+export interface AppState { hostPlatform: Platform; projects: Project[]; settings: Settings; session: Session | null; installState: InstallState | null; installOutput: string; scanning: boolean; scanErrors: string[]; error?: string; update: UpdateInfo; hasToken: boolean; theme: TerminalTheme; installedTerminals: TerminalApp[] }
 export interface DesktopAPI {
+  setProjectTarget(id: string, target: ExecutionTarget): Promise<string>;
+  wslDistributions(): Promise<Array<{ name: string; version: number }>>; wslDirectories(distribution: string, path?: string): Promise<{ path: string; directories: string[] }>; addWslFolder(distribution: string, path: string): Promise<void>;
   state(): Promise<AppState>; scan(): Promise<void>; addFolder(): Promise<void>; createProject(): Promise<{ id: string; path: string } | null>;
   saveSettings(settings: Settings): Promise<void>;
   start(id: string): Promise<void>; stop(): Promise<void>; restart(name: string): Promise<void>;

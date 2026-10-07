@@ -6,6 +6,8 @@ const subscribe = (name: string, callback: (value: any) => void) => {
   ipcRenderer.on(name, listener); return () => ipcRenderer.removeListener(name, listener);
 };
 const api: DesktopAPI = {
+  setProjectTarget: (id, target) => invoke('setProjectTarget', id, target),
+  wslDistributions: () => invoke('wslDistributions'), wslDirectories: (distribution, path) => invoke('wslDirectories', distribution, path), addWslFolder: (distribution, path) => invoke('addWslFolder', distribution, path),
   state: () => invoke('state'), scan: () => invoke('scan'), addFolder: () => invoke('addFolder'), createProject: () => invoke('createProject'),
   saveSettings: value => invoke('saveSettings', value), start: id => invoke('start', id), stop: () => invoke('stop'), restart: name => invoke('restart', name),
   install: (id, mode) => invoke('install', id, mode), cancelInstall: () => invoke('cancelInstall'), installInput: data => invoke('installInput', data), installResize: (cols, rows) => invoke('installResize', cols, rows),

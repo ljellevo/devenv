@@ -1,17 +1,18 @@
 # Devenv
 
-A macOS menu bar app for starting, stopping, and switching entire local development projects. Electron + React + shadcn/ui. Services are ordinary shell commands; Node, Python, Ollama, Docker, and other tools use the same lifecycle.
+A desktop and tray app for macOS, Windows, Linux, and WSL 2 for starting, stopping, and switching entire local development projects. Electron + React + shadcn/ui. Services are ordinary shell commands; Node, Python, Ollama, Docker, and other tools use the same lifecycle.
 
 ## Installation
 
-Devenv currently runs on **macOS**. Downloadable apps include their own runtime; Node.js is only needed when building from source. Install the runtimes your projects need (such as Node.js, Python, or Docker) separately.
+Platform support is implemented for macOS, Windows x64, Linux x64, and WSL 2. Native validation is still required before the new packages are release-ready; see [verification](docs/verification.md). Downloadable apps include their own runtime; Node.js is only needed when building from source. Install the runtimes your projects need (such as Node.js, Python, or Docker) separately.
 
 | Operating system | Availability |
 | --- | --- |
 | macOS, Apple Silicon (M-series) | Use the `arm64.dmg` release asset |
 | macOS, Intel | Use the `x64.dmg` release asset |
-| Windows | Not supported yet; no Windows installer |
-| Linux | Not supported yet; no Linux package |
+| Windows x64 | NSIS `.exe`; PowerShell 7 or Windows PowerShell |
+| Linux x64 | AppImage or deb; Ubuntu 24.04 is the validation target |
+| WSL 2 | Windows app plus a bundled Linux x64 companion; no WSLg required |
 
 ### macOS (Apple Silicon and Intel)
 
@@ -26,11 +27,13 @@ To update, use **Settings → Updates** or download a newer DMG from Releases. Q
 
 ### Windows
 
-There is currently no supported Windows installation, including through WSL. The app depends on macOS terminal automation, process inspection, and packaging. Building the Electron UI alone does not provide Windows support.
+Run `Devenv-<version>-windows-x64.exe` when available in Releases. Choose Windows Terminal for log tabs or PowerShell for separate log windows. Native commands prefer PowerShell 7 and fall back to Windows PowerShell; use compatible command overrides.
+
+For WSL, install WSL 2 and a distribution, then use **Settings → Workspace → Choose WSL folder**. The picker validates directories inside the distribution. UNC folders are detected automatically. Native Windows-drive projects offer a per-project execution selector while stopped. The companion is provisioned under `~/.local/share/devenv/companion/<version>` inside the selected distribution; it includes Node and native PTY dependencies. See [WSL setup](docs/help/wsl-setup.md) and [operations](docs/help/wsl.md).
 
 ### Linux
 
-There is currently no supported Linux installation or AppImage, DEB, or RPM. Linux support requires adapting the platform integrations and validating process cleanup before installers can be provided.
+Use `Devenv-<version>-linux-x64.AppImage` or `.deb` when available. Make an AppImage executable before running it; install deb packages with your distribution package installer. System Terminal tries xdg-terminal-exec, x-terminal-emulator, GNOME/KDE terminals, Xfce Terminal, and xterm. Ghostty is also supported. See the [Linux guide](docs/help/linux.md).
 
 ## Quick start
 
@@ -56,17 +59,17 @@ Only run configurations you trust: service and installation commands execute wit
 3. Select a project and click **Run project**. Running another project stops the first before starting the second.
 4. Read logs in the app or choose **Open in Terminal**, **iTerm2**, or **Ghostty** (whichever terminal app you picked) for one viewer tab per enabled service. Terminal opens a window per service, since it cannot be scripted to open tabs.
 
-Hover at the left edge to reveal the project sidebar, or press **⌘K** to open the command menu. The menu can add a project, select an existing one, add a search folder, or open Help and Settings. **Add a project** asks for a folder, writes an empty `devenv.toml`, and shows a copyable prompt for an agent to configure it. You can also close the prompt and fill out the Config tab yourself. Devenv never overwrites an existing file. The [in-app user guide](docs/user-guide.md) covers the full workflow.
+Hover at the left edge to reveal the project sidebar, or press **⌘K** on macOS or **Ctrl+K** elsewhere to open the command menu. The menu can add a project, select an existing one, add a search folder, or open Help and Settings. **Add a project** asks for a folder, writes an empty `devenv.toml`, and shows a copyable prompt for an agent to configure it. You can also close the prompt and fill out the Config tab yourself. Devenv never overwrites an existing file. The [in-app user guide](docs/user-guide.md) covers the full workflow.
 
 Each service row also has **Start**, **Stop**, or **Retry**. Starting a service starts any missing dependencies; stopping one stops its active dependents first. Independent services keep running. **Start remaining** fills in a partial session, and stopping its last service ends the session.
 
-**Open in Finder** reveals the selected project's `devenv.toml`, and the **Open in …** button beside it opens a new window of your terminal app in that file's folder. Both work without starting a session. Onboarding asks which terminal app you prefer (Terminal, iTerm2, or Ghostty); change it later in Settings.
+**Open in Finder / Explorer / File Manager** reveals the selected project's `devenv.toml`, and the **Open in …** button beside it opens a new window of your terminal app in that file's folder. Both work without starting a session. Onboarding asks which terminal app you prefer (options depend on the host platform); change it later in Settings.
 
-Closing a log tab does not stop its service. Closing Devenv's window keeps it in the menu bar. **Quit Devenv** stops the session before exiting. A shutdown failure leaves the app available to show the error and retry Stop.
+Closing a log tab does not stop its service. Closing Devenv's window keeps it in the macOS menu bar or the Windows/Linux system tray (click the tray icon to reopen it). **Quit Devenv** stops the session before exiting. A shutdown failure leaves the app available to show the error and retry Stop.
 
 New nested folders are discovered on app focus or Refresh. Existing config directories and search roots are watched without recursively watching dependency trees. Config changes apply next session; the active session keeps the commands it originally started with.
 
-Use the **Config** tab to edit the selected `devenv.toml` directly in the built-in Monaco editor. Devenv validates changes before saving, uses ⌘S as a shortcut, preserves edits while changing tabs, and asks before discarding unsaved edits when switching projects. If another tool changes the file, reload it before saving. **Services**, **Terminal**, and **Install** are the other tabs; clicking a service opens its filtered output in Terminal, where **Open in …** opens external tabs in your terminal app for the session. Switch between light and dark appearance in Settings. The macOS window uses a translucent, blurred background; the Terminal tab stays dark in either mode. The config editor uses a Nord palette matched to the app appearance. Devenv reads terminal accent colors from the literal `PROMPT` assignment in `~/.zshrc` (falling back to green and violet); it never executes the file.
+Use the **Config** tab to edit the selected `devenv.toml` directly in the built-in Monaco editor. Devenv validates changes before saving, uses ⌘S on macOS or Ctrl+S elsewhere, preserves edits while changing tabs, and asks before discarding unsaved edits when switching projects. If another tool changes the file, reload it before saving. **Services**, **Terminal**, and **Install** are the other tabs; clicking a service opens its filtered output in Terminal, where **Open in …** opens external tabs in your terminal app for the session. Switch between light and dark appearance in Settings. The macOS window uses a translucent, blurred background; the Terminal tab stays dark in either mode. The config editor uses a Nord palette matched to the app appearance. Devenv reads terminal accent colors from the literal `PROMPT` assignment in `~/.zshrc` (falling back to green and violet); it never executes the file.
 
 ## Install a cloned project
 
@@ -139,6 +142,19 @@ Keep `ports` synchronized with application configuration. Devenv neither rewrite
 
 A startup failure rolls back what that attempt started. It does not restart previously stopped projects or external processes, undo migrations, or delete database volumes. A later failure keeps other services running with a degraded status. Stop/quit works in reverse dependency order and escalates from SIGTERM to SIGKILL after the configured grace period.
 
+### Platform command overrides
+
+Every command field accepts a string or a strict platform map:
+
+```toml
+[services.web]
+command = { default = "npm run dev", windows = "npm.cmd run dev" }
+```
+
+Keys are `macos`, `linux`, `windows`, and `default`; WSL selects `linux`. Missing matches are errors. Windows PowerShell lacks PowerShell 7's `&&` syntax. Commands are resolved before runtime and installation hashes include execution identity. Linux and macOS use process groups; native Windows uses a bundled Job Object helper. Explicit cleanup runs before owned trees are terminated. External Windows port owners must currently be stopped manually; WSL proxies are never reclaimed.
+
+See the [documentation index](docs/README.md) for all platform guides and [verification](docs/verification.md) for release blockers.
+
 ## Examples
 
 Start with [basic.toml](examples/basic.toml) and adapt its commands and ports to your project. The [Intivo](examples/intivo.toml), [Dealroom](examples/dealroom.toml), and [Mekle 2.0](examples/mekle-2.0.toml) files illustrate larger setups. They depend on separate project layouts and are not runnable demos included in this repository. Intivo and Dealroom expect the configuration in a `resources` folder; Mekle expects it in the project root.
@@ -147,23 +163,23 @@ Review project-specific installation, migration, and cleanup commands before ada
 
 ## Updates and releases
 
-Devenv checks GitHub Releases and offers a matching DMG for assisted installation. The default repository is **ljellevo/devenv**. Packaged apps check four seconds after launch and every three hours while running. They also check on focus or wake if the three-hour interval has elapsed. Settings shows the last check time, and Settings and the menu bar offer a manual check. An available release appears in the app, and installation still requires confirmation.
+Devenv checks GitHub Releases and offers a matching platform, architecture, and package for assisted installation. The default repository is **ljellevo/devenv**. Packaged apps check four seconds after launch and every three hours while running. They also check on focus or wake if the three-hour interval has elapsed. Settings shows the last check time, and Settings and the menu bar offer a manual check. An available release appears in the app, and installation still requires confirmation.
 
 Public releases work without a token. For a private repository, save a fine-grained GitHub token with read-only **Contents** permission in Settings → Updates. Tokens are stored in a local mode-0600 file rather than Keychain, avoiding repeated Keychain prompts across ad-hoc signed builds. Tokens are never returned to the renderer, logged, or forwarded to asset download hosts. Empty input + Clear removes the saved token.
 
-**Download & install** asks for confirmation, downloads and verifies the asset size and GitHub SHA-256 digest when supplied, stops the active session, opens the DMG, and quits. Drag the new version into Applications. Installation is assisted; it does not silently replace the running app.
+**Download & install** asks for confirmation, downloads and verifies the asset size and GitHub SHA-256 digest when supplied, stops installation and the active session, then opens the DMG, NSIS, or deb installer. On macOS, drag the new version into Applications. AppImages are revealed with instructions to quit, replace the old file, and mark the replacement executable. Installation is assisted; it does not silently replace the running app.
 
-The Release workflow builds arm64 and x64 DMG/ZIP installers. Pushes to `main` increment the latest stable patch tag; manual runs accept a version. The version is applied to the package before building, so the app and release agree. Publishing occurs only when the workflow runs in GitHub; local builds never publish.
+The Release workflow builds macOS arm64/x64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage/deb artifacts. A Linux job builds the companion before Windows packaging. Native test jobs and a prepared WSL 2 runner gate publication. Pushes to `main` increment the latest stable patch tag; manual runs accept a version. The version is applied to the package before building, so the app and release agree. Publishing occurs only when the workflow runs in GitHub; local builds never publish.
 
 ## Data and recovery
 
-Settings, session journal, updater token, and logs live in `~/Library/Application Support/Devenv/`. Projects stay where they are. Logs are local and may contain anything your commands print; secrets are not automatically redacted. Each service retains two rotating files and the latest ten sessions are kept within the disk budget.
+Host settings, journal, token, and logs live in Electron’s user data directory (`~/Library/Application Support/Devenv/`, `%APPDATA%/Devenv/`, or `$XDG_CONFIG_HOME/Devenv/`). WSL journals and logs live inside each distribution under `~/.local/share/devenv/supervisor/`. WSL installation records have distribution-specific names. Projects stay where they are. Logs are local and may contain anything your commands print; secrets are not automatically redacted. Each service retains two rotating files and the latest ten sessions are kept within the disk budget.
 
 The supervisor remains alive long enough to clean up after the Electron parent disconnects. A journal allows the next launch to stop resources left by a crash; PIDs are checked against start times and process groups. Ambiguous ownership blocks recovery rather than signalling an unrelated process. A machine power loss cannot run shutdown commands; recovery happens on the next launch. Never remove a recovery journal merely to hide a failed cleanup.
 
 ## Developer installation
 
-The supported development environment is **macOS with Node.js 24 and npm**. Use a native Node.js installation matching your Mac's architecture. Get Node.js from the [official download page](https://nodejs.org/en/download). Install Git and the Xcode Command Line Tools if needed:
+Use **Node.js 24 and npm**, native to the build platform. macOS requires Xcode Command Line Tools, Linux requires a C++ compiler, make, and Python 3, and Windows requires Visual Studio C++ Build Tools and Python 3. Run Windows builds in a developer shell with `cl.exe` on PATH. Get Node.js from the [official download page](https://nodejs.org/en/download). Install Git and the Xcode Command Line Tools if needed:
 
 ```sh
 xcode-select --install
@@ -178,7 +194,7 @@ npm ci
 npm start
 ```
 
-`npm start` builds the app and launches Electron. `npm ci` downloads Electron and installs the native terminal dependency (`node-pty`); allow install scripts to run. If a native dependency must compile locally, you will also need Python 3 and the Xcode Command Line Tools.
+`npm start` builds the app and launches Electron. `npm ci` downloads Electron and installs the native terminal dependency (`node-pty`); allow install scripts to run. If a native dependency must compile locally, you need the platform compiler and Python 3. Windows builds compile the bundled Job Object helper. Windows packaging also requires `dist/companion-linux-x64.tar.gz`: run `npm run build:companion` on Linux x64 after `npm ci`, then copy that artifact into the Windows checkout. Native dependencies must be built on their execution OS.
 
 ### Development workflow
 
@@ -204,10 +220,10 @@ npm run typecheck
 npm run build
 npx playwright install chromium
 npm run test:ui          # renderer interaction tests using a mocked desktop bridge
-npm run test:system      # real macOS process inspection and fixture lifecycle
+npm run test:system      # native process inspection and fixture lifecycle
 ```
 
-Run system tests on a Mac that permits process inspection; restrictive sandboxes can block them. The tests use fixtures and mocks rather than starting the project-specific examples. Before submitting lifecycle changes, also check start, stop, switching, and quit with disposable local services. See [verification notes](docs/verification.md) for historical validation and remaining manual checks.
+Run system tests on each native OS with process inspection permitted; restrictive sandboxes can block them. The tests use fixtures and mocks rather than starting the project-specific examples. Before submitting lifecycle changes, also check start, stop, switching, and quit with disposable local services. See [verification notes](docs/verification.md) for historical validation and remaining manual checks.
 
 ### Build an installable app
 
@@ -215,13 +231,13 @@ Run system tests on a Mac that permits process inspection; restrictive sandboxes
 npm run package
 ```
 
-The app is written to `release/mac-arm64/Devenv.app` on Apple Silicon or `release/mac/Devenv.app` on Intel. Copy it into Applications to install. To build DMGs for both architectures:
+The unpacked app is written to the platform directory under `release/`. To build the host platform installers:
 
 ```sh
 npm run dist
 ```
 
-Artifacts are written to `release/`. Local builds do not publish releases. Signing is ad-hoc; Developer ID signing and notarization are not configured. The release workflow builds both DMG and ZIP assets on GitHub.
+Artifacts are written to `release/`. Local builds do not publish releases. Signing is ad-hoc; Developer ID signing and notarization are not configured. The release workflow builds all platform assets and publishes only after native and prepared WSL jobs succeed.
 
 ### Icons
 
@@ -245,7 +261,7 @@ The public API is the versioned TOML schema. GUI and tray share an internal supe
 
 ## Contributing
 
-Bug reports and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and [SECURITY.md](SECURITY.md) for security reporting. Include your macOS version, CPU architecture, app version, and a minimal reproduction when reporting a bug. Remove tokens, environment values, and private project details from logs.
+Bug reports and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and [SECURITY.md](SECURITY.md) for security reporting. Include your host OS, execution target and distribution, CPU architecture, app version, and a minimal reproduction when reporting a bug. Remove tokens, environment values, and private project details from logs.
 
 ## License
 

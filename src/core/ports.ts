@@ -1,8 +1,11 @@
+import { linuxListeners, windowsListeners } from './port-inspection';
 import { exec, processes, identity, sameProcess, stopGroup, delay, type ProcessIdentity } from './process';
 
 export interface PortController { reclaim(ports: number[], log: (text: string) => void): Promise<void>; verifyFree(ports: number[]): Promise<void> }
 
-export async function listeners(port: number): Promise<number[]> {
+export async function listeners(port: number, host: NodeJS.Platform = process.platform): Promise<number[]> {
+  if (host === 'linux') return linuxListeners(port);
+  if (host === 'win32') return windowsListeners(port);
   try {
     const { stdout } = await exec('/usr/sbin/lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { timeout: 5000 });
     return [...new Set(stdout.trim().split(/\s+/).filter(Boolean).map(Number))];
@@ -17,10 +20,10 @@ const shellCommand = (p: ProcessIdentity) => {
   // A noninteractive `sh -c command` is an ordinary supervisor, not the user's terminal shell.
   return !!match && !/^-[a-z]*c(?:\s|$)/.test(match[1] ?? '');
 };
-const protectedCommand = (p: ProcessIdentity) => /com\.docker|docker-proxy|vpnkit|OrbStack|limactl|Devenv\.app|devenv.*(?:main|supervisor)\.cjs/i.test(p.command);
+const protectedCommand = (p: ProcessIdentity) => /com\.docker|docker-proxy|wslhost|wslrelay|wslservice|svchost|vpnkit|OrbStack|limactl|Devenv\.app|devenv.*(?:main|supervisor)\.cjs/i.test(p.command);
 
-export class MacPorts implements PortController {
-  constructor(private env: NodeJS.ProcessEnv = process.env) {}
+export class NativePorts implements PortController {
+  constructor(private env: NodeJS.ProcessEnv = process.env, private host: NodeJS.Platform = process.platform) {}
 
   private async containers(ports: number[]): Promise<{ id: string; name: string; ports: number[] }[]> {
     let ids: string[];
@@ -45,10 +48,11 @@ export class MacPorts implements PortController {
     }
     const stopped = new Set<number>();
     for (const port of ports) {
-      for (const pid of await listeners(port)) {
+      for (const pid of await listeners(port, this.host)) {
         const table = await processes();
         const owner = table.find(p => p.pid === pid);
-        if (!owner) continue;
+        if (!owner) throw new Error(`Port ${port} ownership changed or is inaccessible. Retry after inspecting the listener.`);
+        if (this.host === 'win32') throw new Error(/wsl(?:relay|host|service)/i.test(owner.command) ? `Port ${port} is forwarded from a WSL distribution. Stop the Linux service listening on it; Devenv never stops WSL networking processes.` : `Port ${port} belongs to PID ${pid}. Stop this external Windows process manually; only Devenv Job Objects can be reclaimed safely.`);
         const ancestors = new Set<number>();
         let ancestor = table.find(p => p.pid === process.pid);
         while (ancestor && !ancestors.has(ancestor.pid)) { ancestors.add(ancestor.pid); ancestor = table.find(p => p.pid === ancestor!.ppid); }
@@ -69,8 +73,10 @@ export class MacPorts implements PortController {
 
   async verifyFree(ports: number[]) {
     for (const port of ports) {
-      const pids = await listeners(port);
+      const pids = await listeners(port, this.host);
       if (pids.length) throw new Error(`Port ${port} is still occupied by PID ${pids.join(', ')}. A service may be restarting automatically.`);
     }
   }
 }
+
+export class MacPorts extends NativePorts { constructor(env: NodeJS.ProcessEnv = process.env) { super(env, 'darwin'); } }

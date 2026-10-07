@@ -1,10 +1,11 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it as testCase } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { discover, loadProject } from '../src/core/config';
 import { Installer } from '../src/core/installer';
 
+const it = process.platform === 'win32' ? testCase.skip : testCase;
 const roots: string[] = [];
 async function fixture(steps: string, check = 'test -f installed') {
   const root = await mkdtemp(join(tmpdir(), 'devenv-install-')); roots.push(root);

@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, symlink, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { discover, loadProject } from '../src/core/config';
 const roots: string[] = [];
-async function fixture() { const root = await mkdtemp(join(tmpdir(), 'devenv-config-')); roots.push(root); return root; }
+// realpath matches discovery, including macOS /private/var and Windows 8.3 temp names.
+async function fixture() { const root = await realpath(await mkdtemp(join(tmpdir(), 'devenv-config-'))); roots.push(root); return root; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 describe('configuration discovery', () => {
   it('accepts the Dealroom install recipe and keeps it uninstalled until recorded', async () => {
@@ -23,7 +24,7 @@ describe('configuration discovery', () => {
     await symlink(root, join(root, 'resources/loop'));
     const result = await discover([root, join(root, 'resources')], ['archive']);
     expect(result.errors).toEqual([]); expect(result.projects).toHaveLength(1);
-    expect(result.projects[0].services[0].cwd).toBe(join(root, 'api').replace(/^\/var\//, '/private/var/'));
+    expect(result.projects[0].services[0].cwd).toBe(join(root, 'api'));
   });
   it.each([
     ['duplicate ports', '[services.b]\ncommand="true"\nports=[3100]', /Port 3100/],

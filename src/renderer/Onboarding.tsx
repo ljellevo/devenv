@@ -1,3 +1,4 @@
+import { shortcutModifier, type Platform } from '../shared/platform';
 import { useState, type ReactNode } from 'react';
 import { ArrowLeftRight, ArrowLeft, ArrowRight, Check, FileCode2, FilePlus2, FolderPlus, FolderSearch, Palette, Play, SquareTerminal, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,11 +10,11 @@ import type { AppState } from '../shared/types';
 
 const kbd = (key: string) => <kbd className="rounded border px-1.5 py-0.5 text-[10px]">{key}</kbd>;
 const toml = (name: string) => <span className="mono text-xs">{name}</span>;
-const steps: { kind: 'info' | 'appearance' | 'terminal' | 'folders' | 'project'; icon: typeof Play; title: string; body: ReactNode }[] = [
+const stepsFor = (host: Platform): { kind: 'info' | 'appearance' | 'terminal' | 'folders' | 'project'; icon: typeof Play; title: string; body: ReactNode }[] => [
   { kind: 'info', icon: ArrowLeftRight, title: 'Welcome to Devenv', body: <><p>Devenv starts, stops, and switches your local development projects from one place.</p><p>One project session is active at a time. Switching to another project stops the current one first, so ports and processes never collide.</p></> },
-  { kind: 'appearance', icon: Palette, title: 'Light or dark?', body: <p>Pick how Devenv looks. <strong>System</strong> follows your Mac’s appearance and switches with it. You can change this in Settings at any time.</p> },
+  { kind: 'appearance', icon: Palette, title: 'Light or dark?', body: <p>Pick how Devenv looks. <strong>System</strong> follows your system’s appearance and switches with it. You can change this in Settings at any time.</p> },
   { kind: 'terminal', icon: SquareTerminal, title: 'Which terminal do you use?', body: <p>Devenv opens service logs and project folders in your terminal app. Pick the one you prefer. You can change this in Settings at any time.</p> },
-  { kind: 'info', icon: Play, title: 'Run, watch, and switch', body: <ul className="list-disc space-y-2 pl-5"><li><strong>Run project</strong> starts every enabled service in dependency order.</li><li>The <strong>Terminal</strong> tab streams service output, or open it in your terminal app; <strong>Config</strong> edits the TOML in place.</li><li>Press {kbd('⌘ K')} to search projects and commands.</li></ul> },
+  { kind: 'info', icon: Play, title: 'Run, watch, and switch', body: <ul className="list-disc space-y-2 pl-5"><li><strong>Run project</strong> starts every enabled service in dependency order.</li><li>The <strong>Terminal</strong> tab streams service output, or open it in your terminal app; <strong>Config</strong> edits the TOML in place.</li><li>Press {kbd(`${shortcutModifier(host)} K`)} to search projects and commands.</li></ul> },
   { kind: 'info', icon: FileCode2, title: 'One small file per project', body: <><p>One {toml('devenv.toml')} describes all the services in a project and how they depend on each other. Optionally, it also describes how to install the project, so setting up and switching projects stays quick.</p><pre className="mono rounded-lg border bg-[var(--surface)] px-4 py-3 text-[11px] leading-5 text-muted-foreground">{'[services.db]\ncommand = "docker compose up postgres"\n\n[services.api]\ncommand = "npm run dev"\ndepends_on = ["db"]\n\n[[install.steps]]\nid = "dependencies"\ncommand = "npm install"'}</pre></> },
   { kind: 'folders', icon: FolderSearch, title: 'Where are your projects?', body: <p>Choose the folder that <strong>contains</strong> your projects. Devenv looks for {toml('devenv.toml')} in its subfolders and skips dependency, cache, and build folders. You can add more folders in Settings at any time.</p> },
   { kind: 'project', icon: FilePlus2, title: 'Want to add a project?', body: <><p>Have a project without a {toml('devenv.toml')} yet? Choose <strong>that project’s own folder</strong>, not the folder that contains all your projects.</p><p>Devenv creates an empty {toml('devenv.toml')} there and gives you a prompt to paste into a coding agent, which fills it out for you.</p></> },
@@ -21,6 +22,7 @@ const steps: { kind: 'info' | 'appearance' | 'terminal' | 'folders' | 'project';
 
 export function Onboarding({ state, open, onDone, onAddProject, run }: { state: AppState; open: boolean; onDone(): void; onAddProject(): void; run(action: () => Promise<unknown>): void }) {
   const [index, setIndex] = useState(0);
+  const steps = stepsFor(state.hostPlatform);
   const step = steps[index], Icon = step.icon;
   const roots = state.settings.roots;
   const next = () => setIndex(index + 1);

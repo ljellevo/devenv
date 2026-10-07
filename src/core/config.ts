@@ -6,7 +6,17 @@ import { z } from 'zod';
 import type { InstallConfig, Project, ServiceConfig } from '../shared/types';
 import { readInstallRecord, recipeHash } from './install-record';
 
-const command = z.string().trim().min(1);
+import { hostPlatform, executionPlatform, targetIdentity, nativeTarget, type Platform, type ExecutionTarget } from '../shared/platform';
+const nonempty = z.string().trim().min(1);
+const command = z.union([nonempty, z.object({ macos: nonempty.optional(), linux: nonempty.optional(), windows: nonempty.optional(), default: nonempty.optional() }).strict()]);
+export function resolveCommand(value: z.infer<typeof command>, platform: Platform): string {
+  const parsed = command.parse(value);
+  const result = typeof parsed === 'string' ? parsed : parsed[platform] ?? parsed.default;
+  if (!result) throw new Error(`Command has no match for ${platform} and no default`);
+  return result;
+}
+export interface ConfigContext { host: Platform; target: ExecutionTarget }
+const localContext = (): ConfigContext => ({ host: hostPlatform(process.platform), target: process.env.WSL_DISTRO_NAME ? { kind: 'wsl', distribution: process.env.WSL_DISTRO_NAME } : nativeTarget });
 const serviceSchema = z.object({
   cwd: z.string().default('.'), command, ports: z.array(z.number().int().min(1).max(65535)).default([]),
   depends_on: z.array(z.string()).default([]), mode: z.enum(['process', 'task', 'background']).default('process'),
@@ -17,18 +27,21 @@ const serviceSchema = z.object({
 }).strict();
 const installStepSchema = z.object({ id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/), command, cwd: z.string().optional(), env: z.record(z.string()).default({}), env_file: z.string().optional(), timeout: z.number().positive().max(86400).default(1800), interactive: z.boolean().default(false), notes: z.string().optional() }).strict();
 const installSchema = z.object({ cwd: z.string().default('.'), check_command: command.optional(), steps: z.array(installStepSchema).min(1) }).strict();
-const schema = z.object({ version: z.literal(1), name: command, services: z.record(serviceSchema), install: installSchema.optional() }).strict();
+const schema = z.object({ version: z.literal(1), name: nonempty, services: z.record(serviceSchema), install: installSchema.optional() }).strict();
 
-export async function loadProject(file: string): Promise<Project> {
+export async function loadProject(file: string, context = localContext()): Promise<Project> {
   const path = await realpath(file);
   const text = await readFile(path, 'utf8');
-  if (!text.trim()) return { id: projectId(path), path, name: basename(dirname(path)), services: [], draft: true };
-  return validateProjectText(path, text);
+  if (!text.trim()) return { id: projectId(path, context.target), executionTarget: context.target, path, name: basename(dirname(path)), services: [], draft: true };
+  return validateProjectText(path, text, context);
 }
 
-export async function validateProjectText(file: string, text: string): Promise<Project> {
+export async function validateProjectText(file: string, text: string, context = localContext()): Promise<Project> {
   const path = await realpath(file);
-  const data = schema.parse(TOML.parse(text));
+  const parsed = schema.parse(TOML.parse(text));
+  const platform = executionPlatform(context.host, context.target);
+  const resolveOptional = (value: z.infer<typeof command> | undefined) => value === undefined ? undefined : resolveCommand(value, platform);
+  const data = { ...parsed, services: Object.fromEntries(Object.entries(parsed.services).map(([name, service]) => [name, { ...service, command: resolveCommand(service.command, platform), ready_command: resolveOptional(service.ready_command), stop_command: resolveOptional(service.stop_command), logs_command: resolveOptional(service.logs_command) }])), install: parsed.install && { ...parsed.install, check_command: resolveOptional(parsed.install.check_command), steps: parsed.install.steps.map(step => ({ ...step, command: resolveCommand(step.command, platform) })) } };
   let install: InstallConfig | undefined;
   if (data.install) {
     const cwd = resolve(dirname(path), data.install.cwd);
@@ -36,7 +49,7 @@ export async function validateProjectText(file: string, text: string): Promise<P
     if (new Set(ids).size !== ids.length) throw new Error('Install step IDs must be unique');
     const steps = data.install.steps.map(step => ({ ...step, cwd: resolve(dirname(path), step.cwd ?? data.install!.cwd), env_file: step.env_file ? resolve(dirname(path), step.env_file) : undefined }));
     const value = { cwd, check_command: data.install.check_command, steps };
-    install = { ...value, recipeHash: recipeHash(value) };
+    install = { ...value, recipeHash: recipeHash(value, targetIdentity(context.host, context.target)) };
   }
   const services: ServiceConfig[] = [];
   for (const [name, config] of Object.entries(data.services)) {
@@ -65,7 +78,7 @@ export async function validateProjectText(file: string, text: string): Promise<P
   }
   dependencyOrder(enabled);
   const record = install && await readInstallRecord(path, install.recipeHash);
-  return { id: projectId(path), path, name: data.name, services, install, installed: !install || !!record?.installed };
+  return { id: projectId(path, context.target), executionTarget: context.target, path, name: data.name, services, install, installed: !install || !!record?.installed };
 }
 
 export async function validateRuntimePaths(project: Project): Promise<void> {
@@ -75,7 +88,7 @@ export async function validateRuntimePaths(project: Project): Promise<void> {
   }
 }
 
-export const projectId = (path: string) => createHash('sha256').update(path).digest('hex').slice(0, 20);
+export const projectId = (path: string, target: ExecutionTarget = localContext().target) => createHash('sha256').update(target.kind === 'wsl' ? `wsl:${target.distribution}\0${path}` : path).digest('hex').slice(0, 20);
 
 export function dependencyOrder(services: ServiceConfig[]): ServiceConfig[] {
   const result: ServiceConfig[] = [], visited = new Set<string>(), visiting = new Set<string>();

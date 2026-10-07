@@ -1,24 +1,24 @@
 import ReactMarkdown from 'react-markdown';
-import { isValidElement, type ReactNode } from 'react';
 import remarkGfm from 'remark-gfm';
 import { CircleHelp } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import guide from '../../docs/user-guide.md?raw';
+import { composeHelp, type HelpContext } from '../shared/help';
 
-const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
-const headingText = (value: ReactNode): string => Array.isArray(value) ? value.map(headingText).join('') : isValidElement<{ children?: ReactNode }>(value) ? headingText(value.props.children) : typeof value === 'string' || typeof value === 'number' ? String(value) : '';
-const sections = [...guide.matchAll(/^## (.+)$/gm)].map(match => ({ title: match[1], id: slug(match[1]) }));
-
-export function Help({ open, onOpenChange }: { open: boolean; onOpenChange(open: boolean): void }) {
+export function Help({ open, onOpenChange, context }: { open: boolean; onOpenChange(open: boolean): void; context: HelpContext }) {
+  const { markdown: guide, sections, headings } = composeHelp(context);
+  const headingId = (line?: number) => headings.find(heading => heading.line === line)?.id;
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="flex h-[min(84vh,780px)] w-[calc(100vw-96px)] max-w-[920px] flex-col gap-0 overflow-hidden p-0">
     <div className="shrink-0 border-b px-6 py-4 pr-12"><DialogTitle className="flex items-center gap-2"><CircleHelp className="size-5 text-primary" />Help</DialogTitle><DialogDescription className="mt-1">Everything you need to use Devenv.</DialogDescription></div>
     <div className="flex min-h-0 flex-1">
       <nav aria-label="Help topics" className="hidden w-52 shrink-0 space-y-1 overflow-y-auto border-r px-3 py-4 sm:block">{sections.map(section => <a key={section.id} href={`#${section.id}`} onClick={event => { event.preventDefault(); document.getElementById(section.id)?.scrollIntoView({ block: 'start' }); }} className="block rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-[var(--surface-hover)] hover:text-foreground">{section.title}</a>)}</nav>
       <article aria-label="Devenv user guide" className="min-w-0 flex-1 overflow-y-auto px-7 py-5 text-sm leading-6">
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-          h1: ({ children }) => <h1 className="mb-5 text-2xl font-semibold tracking-tight">{children}</h1>,
-          h2: ({ children }) => <h2 id={slug(headingText(children))} className="mb-3 mt-8 scroll-mt-4 border-t pt-6 text-lg font-semibold first:mt-0">{children}</h2>,
-          h3: ({ children }) => <h3 className="mb-2 mt-5 font-semibold">{children}</h3>,
+          h1: ({ children, node }) => <h1 id={headingId(node?.position?.start.line)} className="mb-5 text-2xl font-semibold tracking-tight">{children}</h1>,
+          h2: ({ children, node }) => <h2 id={headingId(node?.position?.start.line)} className="mb-3 mt-8 scroll-mt-4 border-t pt-6 text-lg font-semibold first:mt-0">{children}</h2>,
+          h3: ({ children, node }) => <h3 id={headingId(node?.position?.start.line)} className="mb-2 mt-5 font-semibold">{children}</h3>,
+          h4: ({ children, node }) => <h4 id={headingId(node?.position?.start.line)} className="mb-2 mt-4 font-semibold">{children}</h4>,
+          h5: ({ children, node }) => <h5 id={headingId(node?.position?.start.line)} className="mb-2 mt-4 font-semibold">{children}</h5>,
+          h6: ({ children, node }) => <h6 id={headingId(node?.position?.start.line)} className="mb-2 mt-4 font-semibold">{children}</h6>,
           p: ({ children }) => <p className="mb-3 text-foreground/85">{children}</p>,
           ul: ({ children }) => <ul className="mb-4 list-disc space-y-1 pl-5">{children}</ul>,
           ol: ({ children }) => <ol className="mb-4 list-decimal space-y-1 pl-5">{children}</ol>,

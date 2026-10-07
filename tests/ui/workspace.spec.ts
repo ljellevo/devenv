@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { resolve, extname } from 'node:path';
+import { resolve, extname, sep } from 'node:path';
 
 test.beforeEach(async ({ page }) => {
   // Serve the built renderer through Playwright's routing, without binding a local port.
   await page.route('http://devenv.test/**', async route => {
     const pathname = new URL(route.request().url()).pathname;
     const file = resolve('dist/renderer', '.' + (pathname === '/' ? '/index.html' : pathname));
-    if (!file.startsWith(resolve('dist/renderer') + '/')) return route.abort();
+    if (!file.startsWith(resolve('dist/renderer') + sep)) return route.abort();
     const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
     await route.fulfill({ body: await readFile(file), contentType: types[extname(file)] ?? 'application/octet-stream' });
   });
@@ -20,10 +20,12 @@ test.beforeEach(async ({ page }) => {
     if (new URLSearchParams(location.search).has('install')) { projects[1].install = { cwd: '/Users/developer/code/dealroom/resources', steps: [{ id: 'dependencies', command: 'npm install', cwd: '/Users/developer/code/dealroom/resources', env: {}, timeout: 1800, interactive: true }], recipeHash: 'test' }; projects[1].installed = true; }
     const defaultSettings = { roots: ['/Users/developer/code'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', terminal: 'ghostty', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true };
     if (new URLSearchParams(location.search).has('onboarding')) Object.assign(defaultSettings, { roots: [], appearance: 'system', terminal: 'terminal', onboardingCompleted: false });
-    const state: any = { projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, hasToken: false, installedTerminals: ['terminal', 'ghostty'] };
+    const state: any = { hostPlatform: new URLSearchParams(location.search).get('platform') || 'macos', projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, hasToken: false, installedTerminals: ['terminal', 'ghostty'] };
     let listener = (_: any) => {}, logListener = (_: any) => {};
     (window as any).calls = [];
+    if (new URLSearchParams(location.search).has('wsl')) projects.forEach(project => project.executionTarget = { kind: 'wsl', distribution: 'Ubuntu-24.04' });
     window.devenv = {
+      setProjectTarget: async id => id, wslDistributions: async () => [], wslDirectories: async () => ({ path: '/', directories: [] }), addWslFolder: async () => {},
       state: async () => structuredClone(state), onState: callback => { listener = callback; return () => {}; }, onLog: callback => { logListener = callback; return () => {}; }, onInstallOutput: () => () => {},
       scan: async () => {}, addFolder: async () => { state.settings = { ...state.settings, roots: [...state.settings.roots, '/Users/developer/projects'] }; listener(structuredClone(state)); }, createProject: async () => { const created = { id: 'new-project', path: '/Users/developer/code/New Project/devenv.toml', name: 'New Project', services: [], draft: true }; projects.push(created); state.projects = projects; listener(structuredClone(state)); return { id: created.id, path: created.path }; },
       start: async id => { (window as any).calls.push(['start', id]); const project = projects.find(p => p.id === id)!; state.session = { id: 'session-' + id, project, status: 'running', startedAt: new Date().toISOString(), services: project.services.map((s: any) => ({ name: s.name, status: 'ready', pid: 123 })) }; listener(structuredClone(state)); setTimeout(() => logListener({ seq: 1, time: new Date().toISOString(), service: 'api', stream: 'stdout', text: 'API listening on http://localhost:3100\n' }), 100); },
@@ -162,7 +164,7 @@ test('command menu opens from the header and shortcut, and Help is available', a
   await expect(menu.getByRole('option', { name: /Intivo.*Stopped.*6 services/ })).toBeVisible();
   await menu.getByRole('option', { name: /Dealroom/ }).click();
   await expect(page.getByRole('heading', { name: 'Dealroom', exact: true })).toBeVisible();
-  await page.keyboard.press('Meta+k');
+  await page.keyboard.press('ControlOrMeta+k');
   await menu.getByRole('option', { name: 'Help' }).click();
   await expect(page.getByRole('dialog', { name: 'Help' }).getByRole('heading', { name: 'Run projects and services' })).toBeVisible();
 });
@@ -353,4 +355,45 @@ test('closing Settings with unsaved edits asks before discarding them', async ({
   await open();
   await expect(page.getByLabel('Shell')).toHaveValue('/bin/zsh');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings') ?? '{}'))).not.toMatchObject({ shell: '/bin/bash' });
+});
+
+for (const context of [
+  { platform: 'macos', extra: '', visible: 'macOS app', hidden: ['Linux app', 'Windows app', 'WSL setup', 'WSL project execution'] },
+  { platform: 'linux', extra: '', visible: 'Linux app', hidden: ['macOS app', 'Windows app', 'WSL setup', 'WSL project execution'] },
+  { platform: 'windows', extra: '', visible: 'Windows app', hidden: ['macOS app', 'Linux app', 'WSL project execution'] },
+  { platform: 'windows', extra: '&wsl', visible: 'WSL project execution', hidden: ['macOS app', 'Linux app', 'PowerShell commands and paths'] },
+]) {
+  test(`offline Help filters document and navigation: ${context.platform}${context.extra}`, async ({ page }) => {
+    await page.goto(`/?platform=${context.platform}${context.extra}`);
+    // Host labels follow the desktop platform, not the project's execution target.
+    await expect(page.getByRole('button', { name: 'Search projects and commands' })).toContainText(context.platform === 'macos' ? '⌘ K' : 'Ctrl K');
+    await expect(page.locator('footer')).toContainText({ macos: 'macOS', linux: 'Linux', windows: 'Windows' }[context.platform]!);
+    await expect(page.getByRole('button', { name: `Open in ${{ macos: 'Finder', linux: 'File Manager', windows: 'Explorer' }[context.platform]}` })).toBeVisible();
+    await page.getByRole('button', { name: 'Search projects and commands' }).click();
+    await page.getByRole('option', { name: 'Help' }).click();
+    const help = page.getByRole('dialog', { name: 'Help' });
+    await expect(help.getByRole('heading', { name: context.visible, exact: true })).toBeAttached();
+    await expect(help.getByRole('navigation', { name: 'Help topics' }).getByRole('link', { name: context.visible, exact: true })).toBeVisible();
+    for (const title of context.hidden) { await expect(help.getByRole('heading', { name: title, exact: true })).toHaveCount(0); await expect(help.getByRole('link', { name: title, exact: true })).toHaveCount(0); }
+    if (context.platform === 'windows') await expect(help.getByRole('heading', { name: 'WSL setup' })).toBeAttached();
+    const invalid = await help.locator('a[href^="#"]').evaluateAll(links => links.filter(link => !document.getElementById(link.getAttribute('href')!.slice(1))).length);
+    expect(invalid).toBe(0);
+    await page.keyboard.press('Escape');
+    await page.mouse.move(2, 100);
+    await page.getByRole('button', { name: 'Help', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Help' }).getByRole('heading', { name: context.visible, exact: true })).toBeAttached();
+  });
+}
+
+test('only Windows offers per-project execution environments and WSL search folders', async ({ page }) => {
+  for (const platform of ['macos', 'linux', 'windows']) {
+    await page.goto(`/?platform=${platform}`);
+    await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Execution environment')).toHaveCount(platform === 'windows' ? 1 : 0);
+    await page.mouse.move(600, 400); await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();
+    await page.getByRole('dialog', { name: 'Settings' }).getByRole('tab', { name: 'Workspace' }).click();
+    await expect(page.getByRole('button', { name: 'Choose WSL folder' })).toHaveCount(platform === 'windows' ? 1 : 0);
+    await page.keyboard.press('Escape');
+  }
+  await expect(page.getByLabel('Execution environment')).toHaveValue('');
 });

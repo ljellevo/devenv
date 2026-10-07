@@ -1,0 +1,14 @@
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { build } from 'esbuild';
+if (process.platform !== 'linux' || process.arch !== 'x64') throw new Error('Build the companion on Linux x64 with native node-pty dependencies.');
+const root = 'dist/companion-stage';
+await rm(root, { recursive: true, force: true });
+await mkdir(`${root}/bin`, { recursive: true });
+await cp(process.execPath, `${root}/bin/node`);
+await build({ entryPoints: { supervisor: 'src/core/supervisor.ts', follower: 'src/core/follower.ts' }, outdir: root, bundle: true, platform: 'node', format: 'cjs', outExtension: { '.js': '.cjs' }, external: ['node-pty'], target: 'node22' });
+await cp('node_modules/node-pty', `${root}/node_modules/node-pty`, { recursive: true });
+await cp('node_modules/node-addon-api', `${root}/node_modules/node-addon-api`, { recursive: true });
+await writeFile(`${root}/runtime.json`, JSON.stringify({ node: process.version, platform: process.platform, arch: process.arch }));
+const result = spawnSync('tar', ['-czf', 'dist/companion-linux-x64.tar.gz', '-C', root, '.'], { stdio: 'inherit' });
+if (result.status) process.exit(result.status);

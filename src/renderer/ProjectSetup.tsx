@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { projectSetupPrompt } from '../shared/project-prompt';
+import { projectSetupPrompt, type ProjectPromptContext } from '../shared/project-prompt';
 
-export function ProjectSetup({ path, onClose }: { path: string | null; onClose(): void }) {
+export function ProjectSetup({ path, onClose, context }: { path: string | null; context?: ProjectPromptContext; onClose(): void }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState('');
   useEffect(() => { setCopied(false); setCopyError(''); }, [path]);
-  const prompt = path ? projectSetupPrompt(path) : '';
+  const prompt = path ? projectSetupPrompt(path, context) : '';
   const copy = async () => {
     try { await navigator.clipboard.writeText(prompt); setCopied(true); setCopyError(''); }
     catch { setCopyError('Could not copy automatically. Select and copy the text below.'); }

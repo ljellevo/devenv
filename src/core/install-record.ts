@@ -4,8 +4,9 @@ import { dirname, join } from 'node:path';
 import type { InstallConfig } from '../shared/types';
 
 export interface InstallRecord { version: 1; recipeHash: string; completedStepIds: string[]; installed: boolean }
-export const recipeHash = (config: Omit<InstallConfig, 'recipeHash'>) => createHash('sha256').update(JSON.stringify({ cwd: config.cwd, check_command: config.check_command, steps: config.steps.map(({ notes: _notes, ...step }) => step) })).digest('hex');
-const recordPath = (file: string) => join(dirname(file), '.devenv', 'install.json');
+export const recipeHash = (config: Omit<InstallConfig, 'recipeHash'>, target = '') => createHash('sha256').update(JSON.stringify({ target, cwd: config.cwd, check_command: config.check_command, steps: config.steps.map(({ notes: _notes, ...step }) => step) })).digest('hex');
+const recordName = () => process.env.WSL_DISTRO_NAME ? `install.wsl-${createHash('sha256').update(process.env.WSL_DISTRO_NAME).digest('hex').slice(0, 16)}.json` : 'install.json';
+const recordPath = (file: string) => join(dirname(file), '.devenv', recordName());
 
 export async function readInstallRecord(file: string, hash: string): Promise<InstallRecord | null> {
   try {

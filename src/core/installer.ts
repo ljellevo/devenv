@@ -1,19 +1,18 @@
+import { ownedCommand } from './platform';
 import { EventEmitter } from 'node:events';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { readFile, stat } from 'node:fs/promises';
 import { parse } from 'dotenv';
 import * as pty from 'node-pty';
 import { loadProject } from './config';
 import { readInstallRecord, writeInstallRecord, type InstallRecord } from './install-record';
-import { message, signalGroup, stopGroup } from './process';
+import { message, signalGroup, stopGroup, runCommand } from './process';
 import type { InstallConfig, InstallState, InstallStep } from '../shared/types';
 
-const exec = promisify(execFile);
 export class Installer extends EventEmitter {
   state: InstallState | null = null;
   private terminal?: pty.IPty;
   private cancelled = false;
+  private abort?: AbortController;
   private active?: Promise<void>;
   constructor(private shell: string, private env: NodeJS.ProcessEnv, private stopSession: () => Promise<unknown>) { super(); }
   configure(shell: string, env: NodeJS.ProcessEnv) { this.shell = shell; this.env = env; }
@@ -34,12 +33,12 @@ export class Installer extends EventEmitter {
   }
   private async runCheck(config: InstallConfig): Promise<boolean> {
     if (!(await stat(config.cwd).catch(() => null))?.isDirectory()) return false;
-    try { await exec(this.shell, ['-c', config.check_command!], { cwd: config.cwd, env: this.env, timeout: 30000, maxBuffer: 1024 * 1024 }); return true; }
+    try { return (await runCommand(config.check_command!, { cwd: config.cwd } as import('../shared/types').ServiceConfig, this.shell, this.env, 30000, this.abort?.signal)).code === 0; }
     catch { return false; }
   }
   install(file: string, mode: 'resume' | 'restart'): Promise<void> {
     if (this.active) throw new Error('An installation is already running.');
-    this.cancelled = false;
+    this.cancelled = false; this.abort = new AbortController();
     const task = this.runInstall(file, mode);
     this.active = task;
     return task.finally(() => { this.active = undefined; });
@@ -57,6 +56,7 @@ export class Installer extends EventEmitter {
         await writeInstallRecord(file, { version: 1, recipeHash: config.recipeHash, completedStepIds: config.steps.map(s => s.id), installed: true });
         this.update({ projectId: project.id, status: 'completed', completedStepIds: config.steps.map(s => s.id) }); return;
       }
+      if (this.cancelled) throw new Error('Installation cancelled');
       await this.stopSession();
       await writeInstallRecord(file, { version: 1, recipeHash: config.recipeHash, completedStepIds: completed, installed: false });
       for (let index = 0; index < config.steps.length; index++) {
@@ -85,11 +85,12 @@ export class Installer extends EventEmitter {
     if (!(await stat(step.cwd).catch(() => null))?.isDirectory()) throw new Error(`${step.id}: directory does not exist: ${step.cwd}`);
     const fileEnv = step.env_file ? parse(await readFile(step.env_file)) : {};
     const env = { ...this.env, ...fileEnv, ...step.env, TERM: 'xterm-256color' } as Record<string, string>;
-    const terminal = pty.spawn(this.shell, ['-c', step.command], { cwd: step.cwd, env, cols: 100, rows: 30, name: 'xterm-256color' });
+    const [file, args] = ownedCommand(this.shell, step.command, step.interactive);
+    const terminal = pty.spawn(file, args, { cwd: step.cwd, env, cols: 100, rows: 30, name: 'xterm-256color' });
     this.terminal = terminal;
     try {
       const code = await new Promise<number>((resolve, reject) => {
-        const timer = setTimeout(() => { signalGroup(terminal.pid, 'SIGKILL'); terminal.kill('SIGKILL'); reject(new Error(`${step.id}: timed out after ${step.timeout}s`)); }, step.timeout * 1000);
+        const timer = setTimeout(() => { try { signalGroup(terminal.pid, 'SIGKILL'); terminal.kill('SIGKILL'); reject(new Error(`${step.id}: timed out after ${step.timeout}s`)); } catch (error) { reject(error); } }, step.timeout * 1000);
         const data = terminal.onData(text => this.output(text));
         terminal.onExit(({ exitCode }) => { clearTimeout(timer); data.dispose(); resolve(exitCode); });
       });
@@ -99,6 +100,6 @@ export class Installer extends EventEmitter {
   }
   input(data: string) { if (!this.terminal) throw new Error('No interactive installation step is running.'); this.terminal.write(data); }
   resize(cols: number, rows: number) { this.terminal?.resize(cols, rows); }
-  cancel() { this.cancelled = true; if (this.terminal) { signalGroup(this.terminal.pid, 'SIGKILL'); this.terminal.kill('SIGKILL'); } }
+  cancel() { this.cancelled = true; this.abort?.abort(); if (this.terminal) { signalGroup(this.terminal.pid, 'SIGKILL'); this.terminal.kill('SIGKILL'); } }
   async shutdown() { this.cancel(); await this.active?.catch(() => {}); }
 }

@@ -1,3 +1,4 @@
+import { openNativeTerminal } from './terminal-backends';
 import { exec, quote } from '../core/process';
 import { terminalLabel } from '../shared/terminals';
 import type { Session, TerminalApp } from '../shared/types';
@@ -79,12 +80,19 @@ const osascript = (script: string) => exec('/usr/bin/osascript', ['-e', script],
 
 export async function openSessionTerminal(terminal: TerminalApp, session: Session, directory: string, executable: string, follower: string) {
   const name = terminalLabel(terminal);
+  if (process.platform !== 'darwin') {
+    for (const service of enabled(session)) await openNativeTerminal(terminal, service.cwd, { executable, script: follower, logDirectory: directory, service: service.name, title: tabTitle(session, service.name) });
+    return;
+  }
+  if (terminal === 'powershell') throw new Error('PowerShell terminal is only supported on Windows');
   try { await osascript(sessionScripts[terminal](session, directory, executable, follower)); }
   catch (error) { throw new Error(`Could not open ${name} ${terminal === 'terminal' ? 'windows' : 'tabs'}. Check that ${name} is installed and macOS Automation access is allowed. Built-in logs remain available. ${error instanceof Error ? error.message : String(error)}`); }
 }
 
 export async function openDirectoryTerminal(terminal: TerminalApp, directory: string) {
   const name = terminalLabel(terminal);
+  if (process.platform !== 'darwin') return openNativeTerminal(terminal, directory);
+  if (terminal === 'powershell') throw new Error('PowerShell terminal is only supported on Windows');
   try { await osascript(directoryScripts[terminal](directory)); }
   catch (error) { throw new Error(`Could not open a ${name} window. Check that ${name} is installed and macOS Automation access is allowed. ${error instanceof Error ? error.message : String(error)}`); }
 }

@@ -1,3 +1,4 @@
+import { shortcutModifier, type Platform } from '../shared/platform';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { configureMonacoTheme, loadMonaco, type MonacoEditor } from './monaco';
 import { Check, CircleAlert, RefreshCw, Save } from 'lucide-react';
@@ -5,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import type { ConfigDocument, ConfigValidation, Project } from '../shared/types';
 
-export function ConfigEditor({ project, visible, onDirtyChange, active, appearance }: { project: Project; visible: boolean; onDirtyChange(dirty: boolean): void; active: boolean; appearance: 'light' | 'dark' }) {
+export function ConfigEditor({ project, visible, onDirtyChange, active, appearance, host = 'macos' }: { project: Project; visible: boolean; onDirtyChange(dirty: boolean): void; active: boolean; appearance: 'light' | 'dark'; host?: Platform }) {
   const container = useRef<HTMLDivElement>(null);
   const editor = useRef<MonacoEditor | null>(null);
   const textRef = useRef('');
@@ -117,7 +118,7 @@ export function ConfigEditor({ project, visible, onDirtyChange, active, appearan
           {!loading && !document && <div className="absolute inset-0 flex items-center justify-center bg-background"><Button onClick={() => void load()}>Retry loading</Button></div>}
         </div>
         <div className="flex min-h-12 items-center justify-between gap-4 border-t bg-[var(--surface)] px-6 py-2 text-xs">
-          <div className="min-w-0">{diskChanged ? <span role="status" className="flex items-center gap-2 text-amber-500"><CircleAlert className="size-3.5 shrink-0" />File changed on disk. Reload to replace your unsaved edits.</span> : error ? <span role="alert" className="flex items-center gap-2 text-destructive"><CircleAlert className="size-3.5 shrink-0" />{error}</span> : validation?.valid === false ? <span role="status" className="flex items-center gap-2 text-destructive"><CircleAlert className="size-3.5 shrink-0" /><span className="truncate" title={validation.message}>{validation.message}</span></span> : validation?.valid ? <span className="flex items-center gap-2 text-primary"><Check className="size-3.5" />Valid configuration</span> : <span className="text-muted-foreground">{project.draft ? 'Add services to finish this draft' : 'TOML · ⌘S to save'}</span>}</div>
+          <div className="min-w-0">{diskChanged ? <span role="status" className="flex items-center gap-2 text-amber-500"><CircleAlert className="size-3.5 shrink-0" />File changed on disk. Reload to replace your unsaved edits.</span> : error ? <span role="alert" className="flex items-center gap-2 text-destructive"><CircleAlert className="size-3.5 shrink-0" />{error}</span> : validation?.valid === false ? <span role="status" className="flex items-center gap-2 text-destructive"><CircleAlert className="size-3.5 shrink-0" /><span className="truncate" title={validation.message}>{validation.message}</span></span> : validation?.valid ? <span className="flex items-center gap-2 text-primary"><Check className="size-3.5" />Valid configuration</span> : <span className="text-muted-foreground">{project.draft ? 'Add services to finish this draft' : `TOML · ${shortcutModifier(host)}${host === 'macos' ? '' : '+'}S to save`}</span>}</div>
           {active && <span className="shrink-0 text-muted-foreground">Changes apply when this session is next started.</span>}
         </div>
       </section>

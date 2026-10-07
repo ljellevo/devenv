@@ -6,7 +6,7 @@ import type { ChildProcess } from 'node:child_process';
 import type { Project, ServiceConfig, ServiceState, Session } from '../shared/types';
 import { dependencyOrder, loadProject, validateRuntimePaths } from './config';
 import { Logs } from './logs';
-import { MacPorts, type PortController } from './ports';
+import { NativePorts, type PortController } from './ports';
 import { alive, delay, identity, launch, message, processes, runCommand, sameProcess, serviceEnvironment, stopGroup, type ProcessIdentity } from './process';
 
 interface Runtime { config: ServiceConfig; env: NodeJS.ProcessEnv; child?: ChildProcess; follower?: ChildProcess; identity?: ProcessIdentity; followerIdentity?: ProcessIdentity; settled?: Promise<number>; started: boolean; }
@@ -24,9 +24,9 @@ export class Engine extends EventEmitter {
   private working = false;
   private portController: PortController;
   constructor(readonly root: string, private shell: string, private env: NodeJS.ProcessEnv, ports?: PortController) {
-    super(); this.portController = ports ?? new MacPorts(env);
+    super(); this.portController = ports ?? new NativePorts(env);
   }
-  configure(shell: string, env: NodeJS.ProcessEnv) { this.shell = shell; this.env = env; this.portController = new MacPorts(env); }
+  configure(shell: string, env: NodeJS.ProcessEnv) { this.shell = shell; this.env = env; this.portController = new NativePorts(env); }
   private serialize<T>(fn: () => Promise<T>): Promise<T> {
     const result = this.queue.then(async () => { this.working = true; try { return await fn(); } finally { this.working = false; } }); this.queue = result.catch(() => {}); return result;
   }
@@ -41,6 +41,7 @@ export class Engine extends EventEmitter {
       const project = await loadProject(file); // Validate before stopping anything.
       if (project.install && !project.installed) throw new Error('Install this project before running it.');
       await validateRuntimePaths(project);
+      await processes(); // Refuse before launch if ownership cannot be inspected.
       const enabled = project.services.filter(s => s.enabled);
       const selected = new Set<string>();
       const include = (name: string) => {
@@ -187,7 +188,9 @@ export class Engine extends EventEmitter {
     child.stderr?.on('data', text => this.logs?.write(name, 'stderr', text));
     const result = new Promise<number>((resolve) => {
       child.once('error', error => { this.log(name, message(error)); resolve(127); });
-      child.once('exit', (code, signal) => {
+      let observed = false;
+      const exited = (code: number | null, signal: NodeJS.Signals | null) => {
+        if (observed) return; observed = true;
         const current = this.state(name);
         if (!follower) current.exitCode = code;
         if (['running', 'ready'].includes(current.status) && !['stopping', 'stopped'].includes(this.session!.status)) {
@@ -196,7 +199,8 @@ export class Engine extends EventEmitter {
           else { this.status(name, 'failed', `Command exited (${code ?? signal})`); this.recompute(); }
         }
         resolve(code ?? 1);
-      });
+      };
+      child.once('exit', exited); child.once('command-exit', exited);
     });
     return result;
   }
@@ -209,7 +213,7 @@ export class Engine extends EventEmitter {
     try {
       runtime.started = true; await this.journal();
       this.checkCancelled();
-      const child = launch(config.command, config.cwd, this.shell, env);
+      const child = launch(config.command, config.cwd, this.shell, env, config.mode === 'background');
       runtime.child = child; runtime.settled = this.attach(runtime, child);
       if (child.pid) { this.state(name).pid = child.pid; runtime.identity = await identity(child.pid); }
       await this.journal();

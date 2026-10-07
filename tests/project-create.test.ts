@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { coveredBySearchRoot, createProjectConfig } from '../src/core/project-create';
 import { discover } from '../src/core/config';
 
@@ -9,13 +9,13 @@ const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
 
 test('creates an empty config that appears in project discovery for editing', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'devenv-new-project-'));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'devenv-new-project-')));
   directories.push(directory);
   const file = await createProjectConfig(directory);
   expect(await readFile(file, 'utf8')).toBe('');
   const { projects } = await discover([directory]);
   expect(projects).toHaveLength(1);
-  expect(projects[0]).toMatchObject({ path: file, name: directory.split('/').at(-1), services: [], draft: true });
+  expect(projects[0]).toMatchObject({ path: file, name: basename(directory), services: [], draft: true });
   expect(projects[0].error).toBeUndefined();
 
   await writeFile(file, 'version = 1\nname = "Configured"\n[services.web]\ncommand = "npm run dev"\n');
@@ -27,7 +27,7 @@ test('creates an empty config that appears in project discovery for editing', as
 });
 
 test('never overwrites an existing config', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'devenv-existing-project-'));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'devenv-existing-project-')));
   directories.push(directory);
   const file = join(directory, 'devenv.toml');
   await writeFile(file, 'original');
@@ -36,7 +36,7 @@ test('never overwrites an existing config', async () => {
 });
 
 test('uses an existing search root for nested projects and resolves root aliases', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'devenv-search-root-'));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'devenv-search-root-')));
   directories.push(directory);
   const project = join(directory, 'apps', 'sample');
   const sibling = join(directory, 'apps-other');
