@@ -5,10 +5,12 @@ import { join } from 'node:path';
 import { defaultShell, powershellQuote } from '../src/core/platform';
 import { launch, stopGroup, alive, delay, runCommand } from '../src/core/process';
 import type { ServiceConfig } from '../src/shared/types';
+// Fixtures spawn grandchildren with detached:true. Otherwise Node's own kill-on-close job ends them when their
+// node parent exits, and these tests would pass (or race) without Devenv's Job Object doing anything.
 describe.skipIf(process.platform !== 'win32')('Windows Job Object lifecycle', () => {
   it('awaits descendant cleanup after stopping the owned command', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'devenv-job-'));
-    const script = "const fs=require('fs');const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});fs.writeFileSync('child',String(c.pid));setInterval(()=>{},1000)";
+    const script = "const fs=require('fs');const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});fs.writeFileSync('child',String(c.pid));setInterval(()=>{},1000)";
     const child = launch(`& ${powershellQuote(process.execPath)} -e ${powershellQuote(script)}`, cwd, await defaultShell(), process.env);
     try {
       let descendant = 0;
@@ -26,7 +28,7 @@ describe.skipIf(process.platform !== 'win32')('Windows Job Object lifecycle', ()
 describe.skipIf(process.platform !== 'win32')('Windows early parent exit', () => {
   it('cleans descendants even when their original parent exits first', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'devenv-early-'));
-    const script = "const fs=require('fs');const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});fs.writeFileSync('child',String(c.pid));c.unref()";
+    const script = "const fs=require('fs');const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});fs.writeFileSync('child',String(c.pid));c.unref()";
     try {
       const result = await runCommand(`& ${powershellQuote(process.execPath)} -e ${powershellQuote(script)}`, { cwd } as ServiceConfig, await defaultShell(), process.env, 10000);
       expect(result.code).toBe(0);
@@ -54,7 +56,7 @@ describe.skipIf(process.platform !== 'win32')('Windows installation PTY', () => 
 describe.skipIf(process.platform !== 'win32')('Windows background launchers', () => {
   it('retains a detached child until explicit stop', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'devenv-background-'));
-    const script = "const fs=require('fs');const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});fs.writeFileSync('child',String(c.pid));c.unref()";
+    const script = "const fs=require('fs');const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});fs.writeFileSync('child',String(c.pid));c.unref()";
     const child = launch(`& ${powershellQuote(process.execPath)} -e ${powershellQuote(script)}`, cwd, await defaultShell(), process.env, true);
     try {
       const code = await new Promise<number>((resolve, reject) => { child.once('command-exit', resolve); child.once('error', reject); });
