@@ -185,7 +185,7 @@ test('first launch walks through the tutorial and asks for a projects folder', a
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByRole('heading', { name: 'Want to add a project?' })).toBeVisible();
   await expect(tutorial.getByText(/that project’s own folder/)).toBeVisible();
-  await tutorial.getByRole('button', { name: 'Skip and finish' }).click();
+  await tutorial.getByRole('button', { name: 'Finish' }).click();
   await expect(tutorial).toBeHidden();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: ['/Users/developer/projects'], onboardingCompleted: true });
   await page.reload();
@@ -227,6 +227,6 @@ test('resetting the tutorial in Settings shows it on the next launch', async ({ 
   for (let i = 0; i < 3; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByText('/Users/developer/code')).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
-  await tutorial.getByRole('button', { name: 'Skip and finish' }).click();
+  await tutorial.getByRole('button', { name: 'Finish' }).click();
   await expect(tutorial).toBeHidden();
 });

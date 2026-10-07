@@ -31,12 +31,13 @@ export function Onboarding({ state, open, onDone, onAddProject, run }: { state: 
       {roots.map(root => <div key={root} className="flex items-center gap-2 rounded-md border bg-[var(--surface)] py-1 pl-3 pr-1" title={root}><Check className="size-3.5 shrink-0 text-primary" /><span className="mono flex-1 truncate text-xs">{root}</span><Button size="icon" variant="ghost" className="size-8" aria-label={`Remove ${root}`} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, roots: roots.filter(r => r !== root) }))}><Trash2 /></Button></div>)}
       <Button variant={roots.length ? 'outline' : 'default'} onClick={() => run(() => window.devenv.addFolder())}><FolderPlus />{roots.length ? 'Add another folder' : 'Choose folder'}</Button>
     </section>}
+    {step.kind === 'project' && <div><Button variant="outline" onClick={onAddProject}><FilePlus2 />Add a project</Button></div>}
     <div className="flex items-center gap-3">
       <div className="flex gap-1.5" aria-hidden="true">{steps.map((_, i) => <span key={i} className={cn('h-1.5 rounded-full transition-all', i === index ? 'w-5 bg-primary' : 'w-1.5 bg-muted-foreground/30')} />)}</div>
       <div className="ml-auto flex gap-2">
         {index === 0 ? <Button variant="ghost" onClick={onDone}>Skip tutorial</Button> : <Button variant="ghost" onClick={() => setIndex(index - 1)}><ArrowLeft />Back</Button>}
         {step.kind === 'folders' && !roots.length && <Button variant="outline" onClick={next}>Skip for now</Button>}
-        {step.kind === 'project' ? <><Button variant="outline" onClick={onDone}>Skip and finish</Button><Button onClick={onAddProject}><FilePlus2 />Add a project</Button></>
+        {step.kind === 'project' ? <Button onClick={onDone}><Check />Finish</Button>
           : <Button disabled={step.kind === 'folders' && !roots.length} onClick={next}>Next<ArrowRight /></Button>}
       </div>
     </div>
