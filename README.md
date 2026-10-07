@@ -20,19 +20,19 @@ The app icon and menu bar glyph come from `build/icon.svg` and `build/tray.svg`.
 1. Put a `devenv.toml` in a project root or its `resources` folder.
 2. Add a search folder in Devenv, for example `~/Documents/code`. Nested configurations are discovered automatically; large dependency and build folders are excluded.
 3. Select a project and click **Run project**. Running another project stops the first before starting the second.
-4. Read logs in the app or choose **Open in Ghostty** for one viewer tab per enabled service.
+4. Read logs in the app or choose **Open in Terminal**, **iTerm2**, or **Ghostty** (whichever terminal app you picked) for one viewer tab per enabled service. Terminal opens a window per service, since it cannot be scripted to open tabs.
 
 Hover at the left edge to reveal the project sidebar, or press **⌘K** to open the command menu. The menu can add a project, select an existing one, add a search folder, or open Help and Settings. **Add a project** asks for a folder, writes an empty `devenv.toml`, and shows a copyable prompt for an agent to configure it. You can also close the prompt and fill out the Config tab yourself. Devenv never overwrites an existing file. The [in-app user guide](docs/user-guide.md) covers the full workflow.
 
 Each service row also has **Start**, **Stop**, or **Retry**. Starting a service starts any missing dependencies; stopping one stops its active dependents first. Independent services keep running. **Start remaining** fills in a partial session, and stopping its last service ends the session.
 
-The **Finder** button reveals the selected project's `devenv.toml`, and **Terminal** opens a new Ghostty window in that file's folder. Both work without starting a session.
+**Open in Finder** reveals the selected project's `devenv.toml`, and the **Open in …** button beside it opens a new window of your terminal app in that file's folder. Both work without starting a session. Onboarding asks which terminal app you prefer (Terminal, iTerm2, or Ghostty); change it later in Settings.
 
 Closing a log tab does not stop its service. Closing Devenv's window keeps it in the menu bar. **Quit Devenv** stops the session before exiting. A shutdown failure leaves the app available to show the error and retry Stop.
 
 New nested folders are discovered on app focus or Refresh. Existing config directories and search roots are watched without recursively watching dependency trees. Config changes apply next session; the active session keeps the commands it originally started with.
 
-Use the **Config** tab to edit the selected `devenv.toml` directly in the built-in Monaco editor. Devenv validates changes before saving, uses ⌘S as a shortcut, preserves edits while changing tabs, and asks before discarding unsaved edits when switching projects. If another tool changes the file, reload it before saving. **Services**, **Terminal**, and **Install** are the other tabs; clicking a service opens its filtered output in Terminal, where **Open in Ghostty** opens external tabs for the session. Switch between light and dark appearance in Settings. The macOS window uses a translucent, blurred background; the Terminal tab stays dark in either mode. The config editor uses a Nord palette matched to the app appearance. Devenv reads terminal accent colors from the literal `PROMPT` assignment in `~/.zshrc` (falling back to green and violet); it never executes the file.
+Use the **Config** tab to edit the selected `devenv.toml` directly in the built-in Monaco editor. Devenv validates changes before saving, uses ⌘S as a shortcut, preserves edits while changing tabs, and asks before discarding unsaved edits when switching projects. If another tool changes the file, reload it before saving. **Services**, **Terminal**, and **Install** are the other tabs; clicking a service opens its filtered output in Terminal, where **Open in …** opens external tabs in your terminal app for the session. Switch between light and dark appearance in Settings. The macOS window uses a translucent, blurred background; the Terminal tab stays dark in either mode. The config editor uses a Nord palette matched to the app appearance. Devenv reads terminal accent colors from the literal `PROMPT` assignment in `~/.zshrc` (falling back to green and violet); it never executes the file.
 
 The [Mekle 2.0 example](examples/mekle-2.0.toml) is ready to place at the root of `mekle-2.0` as `devenv.toml`.
 
@@ -97,7 +97,7 @@ Paths are relative to the **TOML file**, including `env_file`. Commands run in `
 
 Readiness commands should be short, read-only checks. Each attempt is limited to five seconds and is also checked every five seconds once running. A failing runtime check marks the service failed; restart it manually after resolving the cause. Without a readiness check the status is **Running**, not **Ready**. Dependencies gate startup, not runtime crash cascades.
 
-Output is language agnostic, but applications control their own buffering. Use an unbuffered command (for example `python -u`) or an appropriate service environment variable if output arrives late. Commands receive no interactive stdin; Ghostty tabs are read-only log viewers, not service terminals.
+Output is language agnostic, but applications control their own buffering. Use an unbuffered command (for example `python -u`) or an appropriate service environment variable if output arrives late. Commands receive no interactive stdin; external terminal tabs are read-only log viewers, not service terminals.
 
 ### Ports and cleanup
 
@@ -149,12 +149,12 @@ npm run build
 npm run test:ui          # Playwright; install Chromium first if needed
 ```
 
-Tests never start Intivo or Dealroom, migrate their databases, or reclaim their existing ports. Perform the real-project smoke check on a prepared machine: start Intivo, inspect every service, switch to Dealroom and back, confirm old ports are released and database data remains, then test quit and Ghostty tabs. See [verification notes](docs/verification.md) for the checks performed during implementation.
+Tests never start Intivo or Dealroom, migrate their databases, or reclaim their existing ports. Perform the real-project smoke check on a prepared machine: start Intivo, inspect every service, switch to Dealroom and back, confirm old ports are released and database data remains, then test quit and the external terminal tabs. See [verification notes](docs/verification.md) for the checks performed during implementation.
 
 ## Code layout
 
 - `src/core`: configuration, discovery, process supervision, reclamation, logging, recovery, updater.
-- `src/main`: Electron lifecycle, tray, validated IPC, Ghostty automation, preload bridge.
+- `src/main`: Electron lifecycle, tray, validated IPC, Terminal, iTerm2, and Ghostty automation, preload bridge.
 - `src/renderer`: shadcn/ui components and workspace UI; no direct shell or filesystem access.
 - `examples`: project TOMLs; `tests`: lifecycle, configuration, updater, and UI checks.
 

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, ipcMain, dialog, shell, powerMonitor } from 'electron';
 import { fork, type ChildProcess } from 'node:child_process';
-import { mkdir, readFile, writeFile, rename, stat, realpath } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, stat, realpath, access } from 'node:fs/promises';
 import { watch, type FSWatcher } from 'node:fs';
 import { join, resolve, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -12,10 +12,11 @@ import { themeFromZshrc } from '../core/theme';
 import { message } from '../core/process';
 import { Updater } from '../core/updater';
 import { startUpdatePolling } from '../core/update-polling';
-import { openGhostty, openGhosttyDirectory } from './ghostty';
+import { openDirectoryTerminal, openSessionTerminal } from './terminals';
+import { terminalApps, terminalLabel } from '../shared/terminals';
 import trayIcon from './trayTemplate.png';
 import trayIcon2x from './trayTemplate@2x.png';
-import type { AppState, ConfigValidation, InstallState, Settings, Session } from '../shared/types';
+import type { AppState, ConfigValidation, InstallState, Settings, Session, TerminalApp } from '../shared/types';
 
 app.setName('Devenv');
 if (process.env.DEVENV_DATA_DIR && !app.isPackaged) app.setPath('userData', resolve(process.env.DEVENV_DATA_DIR));
@@ -28,8 +29,8 @@ let updater: Updater;
 let ready = false, quitting = false, quitRequested = false;
 let sequence = 0;
 const requests = new Map<number, { resolve(value: any): void; reject(error: Error): void }>();
-const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL || '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'system', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: false };
-const state: AppState = { projects: [], settings: defaults, session: null, installState: null, installOutput: '', scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, hasToken: false, theme: themeFromZshrc('') };
+const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL || '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'system', terminal: 'terminal', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: false };
+const state: AppState = { projects: [], settings: defaults, session: null, installState: null, installOutput: '', scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, hasToken: false, theme: themeFromZshrc(''), installedTerminals: [] };
 let installOutputTimer: ReturnType<typeof setTimeout> | undefined;
 let watchers: FSWatcher[] = [];
 let scanTimer: ReturnType<typeof setTimeout>;
@@ -68,6 +69,12 @@ function createWindow() {
   window.on('close', event => { if (!quitting) { event.preventDefault(); window?.hide(); } });
   window.on('focus', () => { void refreshTheme(); clearTimeout(scanTimer); scanTimer = setTimeout(() => action(scan), 300); checkUpdatesIfDue(); });
 }
+// A hint for the terminal picker only; an app installed elsewhere can still be chosen.
+async function findTerminals() {
+  const folders = ['/Applications', '/Applications/Utilities', '/System/Applications/Utilities', join(homedir(), 'Applications')];
+  const found = await Promise.all(terminalApps.map(async ({ value, bundle }) => (await Promise.any(folders.map(folder => access(join(folder, bundle)))).then(() => true, () => false)) ? value : undefined));
+  state.installedTerminals = found.filter((value): value is TerminalApp => !!value);
+}
 async function refreshTheme() {
   state.theme = themeFromZshrc(await readFile(join(homedir(), '.zshrc'), 'utf8').catch(() => ''));
   publish();
@@ -84,7 +91,7 @@ function updateTray() {
     ...state.projects.map(project => ({ label: project.name, type: 'checkbox' as const, checked: !!active && session.project.id === project.id, enabled: !project.error && !project.draft && ready && !['starting', 'stopping'].includes(session?.status ?? ''), click: () => action(() => project.install && !project.installed ? installProject(project.id) : startProject(project.id)) })),
     { type: 'separator' },
     { label: 'Stop project', enabled: !!active, click: () => action(() => rpc('stop')) },
-    { label: 'Open in Ghostty', enabled: !!active, click: () => action(terminal) },
+    { label: `Open in ${terminalLabel(state.settings.terminal)}`, enabled: !!active, click: () => action(terminal) },
     { label: 'Show Devenv', click: show },
     { label: 'Check for updates', click: () => { show(); action(() => updater.check(state.settings.releaseRepo)); } },
     { type: 'separator' }, { label: 'Quit Devenv', accelerator: 'Command+Q', click: () => app.quit() },
@@ -99,7 +106,7 @@ function trayImage() {
 }
 async function saveSettings(settings: Settings) {
   const previous = state.settings;
-  const next = z.object({ roots: z.array(z.string().min(1)).max(30), exclusions: z.array(z.string().min(1)).max(100), shell: z.string().min(1), releaseRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), appearance: z.enum(['light', 'dark', 'system']), projectFolders: z.array(z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(80), parentId: z.string().uuid().nullable() }).strict()).max(200), projectFolderAssignments: z.record(z.string().uuid()), projectTreeOrder: z.record(z.array(z.string().min(1).max(100)).max(5000)), sidebarPinned: z.boolean(), onboardingCompleted: z.boolean() }).strict().parse(settings);
+  const next = z.object({ roots: z.array(z.string().min(1)).max(30), exclusions: z.array(z.string().min(1)).max(100), shell: z.string().min(1), releaseRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), appearance: z.enum(['light', 'dark', 'system']), terminal: z.enum(['terminal', 'iterm', 'ghostty']), projectFolders: z.array(z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(80), parentId: z.string().uuid().nullable() }).strict()).max(200), projectFolderAssignments: z.record(z.string().uuid()), projectTreeOrder: z.record(z.array(z.string().min(1).max(100)).max(5000)), sidebarPinned: z.boolean(), onboardingCompleted: z.boolean() }).strict().parse(settings);
   const folderIds = new Set(next.projectFolders.map(folder => folder.id));
   if (folderIds.size !== next.projectFolders.length) throw new Error('Project folders must have unique IDs.');
   for (const folder of next.projectFolders) {
@@ -179,7 +186,7 @@ async function stopProjectService(id: string, name: string) {
 async function terminal() {
   if (!state.session || ['stopped', 'failed'].includes(state.session.status)) throw new Error('Start a project first.');
   const directory = await rpc<string>('log-directory');
-  await openGhostty(state.session, directory, process.execPath, join(__dirname, 'follower.cjs'));
+  await openSessionTerminal(state.settings.terminal, state.session, directory, process.execPath, join(__dirname, 'follower.cjs'));
 }
 function registerIPC() {
   const configPath = (id: unknown) => {
@@ -212,7 +219,7 @@ function registerIPC() {
     },
     openTerminal: terminal,
     openConfigFinder: async (id: unknown) => { shell.showItemInFolder((await readConfigDocument(configPath(id))).path); },
-    openConfigTerminal: async (id: unknown) => { await openGhosttyDirectory(dirname((await readConfigDocument(configPath(id))).path)); },
+    openConfigTerminal: async (id: unknown) => { await openDirectoryTerminal(state.settings.terminal, dirname((await readConfigDocument(configPath(id))).path)); },
     readConfig: (id: unknown) => readConfigDocument(configPath(id)),
     validateConfig: async (id: unknown, text: unknown): Promise<ConfigValidation> => {
       const path = configPath(id);
@@ -245,10 +252,10 @@ function registerIPC() {
 }
 async function boot() {
   const root = app.getPath('userData'); await mkdir(root, { recursive: true, mode: 0o700 });
-  await refreshTheme();
+  await Promise.all([refreshTheme(), findTerminals()]);
   try {
     const saved = JSON.parse(await readFile(join(root, 'settings.json'), 'utf8'));
-    state.settings = { ...defaults, ...saved, appearance: ['light', 'dark', 'system'].includes(saved.appearance) ? saved.appearance : defaults.appearance, projectFolders: Array.isArray(saved.projectFolders) ? saved.projectFolders : [], projectFolderAssignments: saved.projectFolderAssignments && typeof saved.projectFolderAssignments === 'object' ? saved.projectFolderAssignments : {}, projectTreeOrder: saved.projectTreeOrder && typeof saved.projectTreeOrder === 'object' ? saved.projectTreeOrder : {}, sidebarPinned: saved.sidebarPinned === true, onboardingCompleted: typeof saved.onboardingCompleted === 'boolean' ? saved.onboardingCompleted : Array.isArray(saved.roots) && saved.roots.length > 0 };
+    state.settings = { ...defaults, ...saved, appearance: ['light', 'dark', 'system'].includes(saved.appearance) ? saved.appearance : defaults.appearance, terminal: terminalApps.some(t => t.value === saved.terminal) ? saved.terminal : 'ghostty', projectFolders: Array.isArray(saved.projectFolders) ? saved.projectFolders : [], projectFolderAssignments: saved.projectFolderAssignments && typeof saved.projectFolderAssignments === 'object' ? saved.projectFolderAssignments : {}, projectTreeOrder: saved.projectTreeOrder && typeof saved.projectTreeOrder === 'object' ? saved.projectTreeOrder : {}, sidebarPinned: saved.sidebarPinned === true, onboardingCompleted: typeof saved.onboardingCompleted === 'boolean' ? saved.onboardingCompleted : Array.isArray(saved.roots) && saved.roots.length > 0 };
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') state.error = 'Settings could not be read. Defaults are in use.'; }
   nativeTheme.themeSource = state.settings.appearance;

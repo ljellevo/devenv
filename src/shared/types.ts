@@ -17,7 +17,8 @@ export interface Session {
 }
 export interface ProjectFolder { id: string; name: string; parentId: string | null }
 export type Appearance = 'light' | 'dark' | 'system';
-export interface Settings { roots: string[]; exclusions: string[]; shell: string; releaseRepo: string; appearance: Appearance; projectFolders: ProjectFolder[]; projectFolderAssignments: Record<string, string>; projectTreeOrder: Record<string, string[]>; sidebarPinned: boolean; onboardingCompleted: boolean }
+export type TerminalApp = 'terminal' | 'iterm' | 'ghostty';
+export interface Settings { roots: string[]; exclusions: string[]; shell: string; releaseRepo: string; appearance: Appearance; terminal: TerminalApp; projectFolders: ProjectFolder[]; projectFolderAssignments: Record<string, string>; projectTreeOrder: Record<string, string[]>; sidebarPinned: boolean; onboardingCompleted: boolean }
 export interface LogEntry { seq: number; time: string; service: string; stream: 'stdout' | 'stderr' | 'system'; text: string }
 export interface ConfigDocument { path: string; text: string; revision: string }
 export interface ConfigValidation { valid: boolean; message?: string; line?: number; column?: number }
@@ -26,7 +27,7 @@ export interface UpdateInfo {
   current: string; latest?: string; notes?: string; message?: string; progress?: number; checkedAt?: string;
 }
 export interface TerminalTheme { background: string; foreground: string; accent: string; secondary: string; source: string }
-export interface AppState { projects: Project[]; settings: Settings; session: Session | null; installState: InstallState | null; installOutput: string; scanning: boolean; scanErrors: string[]; error?: string; update: UpdateInfo; hasToken: boolean; theme: TerminalTheme }
+export interface AppState { projects: Project[]; settings: Settings; session: Session | null; installState: InstallState | null; installOutput: string; scanning: boolean; scanErrors: string[]; error?: string; update: UpdateInfo; hasToken: boolean; theme: TerminalTheme; installedTerminals: TerminalApp[] }
 export interface DesktopAPI {
   state(): Promise<AppState>; scan(): Promise<void>; addFolder(): Promise<void>; createProject(): Promise<{ id: string; path: string } | null>;
   saveSettings(settings: Settings): Promise<void>;

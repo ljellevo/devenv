@@ -71,13 +71,13 @@ Paths such as `cwd` and `env_file` are relative to the TOML file. Services can u
 
 ## Logs and external tools
 
-The Terminal tab shows captured service output. Filter by service or text, pause or follow new lines, and copy visible logs. Clicking a service in the Services tab opens its filtered logs. **Open in Ghostty** opens read-only log tabs for the active session; closing those tabs does not stop services.
+The Terminal tab shows captured service output. Filter by service or text, pause or follow new lines, and copy visible logs. Clicking a service in the Services tab opens its filtered logs. **Open in …** opens read-only log tabs for the active session in your terminal app; closing those tabs does not stop services. Terminal opens one window per service instead of tabs.
 
-The **Finder** button beside the project name reveals the selected project’s config file. Its **Terminal** button opens a new Ghostty window in the config directory without starting a session. If Ghostty or macOS Automation access is unavailable, use the built-in Terminal tab.
+**Open in Finder** beside the project name reveals the selected project’s config file. The **Open in …** button next to it opens a new window of your terminal app in the config directory without starting a session. If the terminal app or macOS Automation access is unavailable, use the built-in Terminal tab.
 
 ## Settings and appearance
 
-Settings lets you manage search folders, excluded directory names, and the shell Devenv uses. Stop the active session before changing shells. Choose a light, dark, or system appearance there (System follows your Mac and switches with it); the built-in Terminal remains dark, and the Config editor uses a Nord palette. Devenv reads terminal accent colors from your `.zshrc` without executing it. **Reset tutorial** shows the first-launch tutorial again the next time Devenv launches.
+Settings lets you manage search folders, excluded directory names, and the shell Devenv uses. Stop the active session before changing shells. Pick your terminal app there (Terminal, iTerm2, or Ghostty; onboarding asks the first time). Choose a light, dark, or system appearance there (System follows your Mac and switches with it); the built-in Terminal remains dark, and the Config editor uses a Nord palette. Devenv reads terminal accent colors from your `.zshrc` without executing it. **Reset tutorial** shows the first-launch tutorial again the next time Devenv launches.
 
 ## Updates and menu bar
 
@@ -85,7 +85,7 @@ Packaged builds check the configured GitHub Releases repository shortly after la
 
 Public releases need no token. A private release repository can use a fine-grained, read-only token saved in Settings. Devenv stores it locally and does not display it again.
 
-The macOS menu bar icon shows the active project and lets you switch projects, stop the project, open Ghostty, show Devenv, and check for updates. Closing the main window leaves Devenv in the menu bar. Quitting stops the active session.
+The macOS menu bar icon shows the active project and lets you switch projects, stop the project, open the session in your terminal app, show Devenv, and check for updates. Closing the main window leaves Devenv in the menu bar. Quitting stops the active session.
 
 ## Troubleshooting and recovery
 

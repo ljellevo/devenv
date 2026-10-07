@@ -18,9 +18,9 @@ test.beforeEach(async ({ page }) => {
     const projects: any[] = [{ id: 'intivo', path: '/Users/developer/code/intivo/resources/devenv.toml', name: 'Intivo', services: [service('postgres', 5433), service('documents', 3200), service('api', 3100), service('web', 5173), service('admin', 5174), service('home', 3000)] }, { id: 'dealroom', path: '/Users/developer/code/dealroom/resources/devenv.toml', name: 'Dealroom', services: [service('api', 3100), service('auth', 3200), service('app', 3000)] }];
     if (new URLSearchParams(location.search).has('empty')) projects.splice(0);
     if (new URLSearchParams(location.search).has('install')) { projects[1].install = { cwd: '/Users/developer/code/dealroom/resources', steps: [{ id: 'dependencies', command: 'npm install', cwd: '/Users/developer/code/dealroom/resources', env: {}, timeout: 1800, interactive: true }], recipeHash: 'test' }; projects[1].installed = true; }
-    const defaultSettings = { roots: ['/Users/developer/code'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true };
-    if (new URLSearchParams(location.search).has('onboarding')) Object.assign(defaultSettings, { roots: [], appearance: 'system', onboardingCompleted: false });
-    const state: any = { projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, hasToken: false };
+    const defaultSettings = { roots: ['/Users/developer/code'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', terminal: 'ghostty', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true };
+    if (new URLSearchParams(location.search).has('onboarding')) Object.assign(defaultSettings, { roots: [], appearance: 'system', terminal: 'terminal', onboardingCompleted: false });
+    const state: any = { projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, hasToken: false, installedTerminals: ['terminal', 'ghostty'] };
     let listener = (_: any) => {}, logListener = (_: any) => {};
     (window as any).calls = [];
     window.devenv = {
@@ -55,7 +55,7 @@ test('shows Reinstall project in the Run project action menu', async ({ page }) 
   expect(await page.evaluate(() => (window as any).calls)).toEqual([['install', 'dealroom', 'restart']]);
 });
 
-test('start, view logs, open Ghostty, switch, and stop through the shared API', async ({ page }) => {
+test('start, view logs, open the terminal app, switch, and stop through the shared API', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
   await page.mouse.move(2, 100);
@@ -65,13 +65,29 @@ test('start, view logs, open Ghostty, switch, and stop through the shared API', 
   await expect(page.getByRole('navigation', { name: 'Projects' }).getByText('Running · 6 services')).toBeVisible();
   await page.getByRole('tab', { name: 'Terminal' }).click();
   await expect(page.getByText('API listening on http://localhost:3100')).toBeVisible();
-  await page.getByRole('button', { name: 'Open in Ghostty' }).click();
+  await page.locator('.terminal-panel').getByRole('button', { name: 'Open in Ghostty' }).click();
   await page.screenshot({ path: 'test-results/workspace.png' });
   await page.mouse.move(2, 100);
   await page.getByRole('navigation', { name: 'Projects' }).getByRole('button', { name: /Dealroom/ }).click();
   await page.getByRole('button', { name: 'Run project' }).click();
   await page.getByRole('button', { name: 'Stop project' }).click();
   expect(await page.evaluate(() => (window as any).calls)).toEqual([['start', 'intivo'], ['terminal'], ['start', 'dealroom'], ['stop']]);
+});
+
+test('the project header opens the config folder in Finder or the chosen terminal app', async ({ page }) => {
+  await page.goto('/');
+  const header = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Intivo', exact: true }) });
+  await header.getByRole('button', { name: 'Open in Finder' }).click();
+  await header.getByRole('button', { name: 'Open in Ghostty' }).click();
+  await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();
+  const picker = page.getByRole('group', { name: 'Terminal app' });
+  await picker.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await expect(picker.getByRole('button', { name: 'Terminal', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText(/Terminal opens one window per service/)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await header.getByRole('button', { name: 'Open in Terminal' }).click();
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([['finder', 'intivo'], ['config-terminal', 'intivo'], ['config-terminal', 'intivo']]);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ terminal: 'terminal' });
 });
 
 test('settings expose release checks and require an explicit install action', async ({ page }) => {
@@ -172,6 +188,14 @@ test('first launch walks through the tutorial and asks for a projects folder', a
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(tutorial.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true');
   await tutorial.getByRole('button', { name: 'Next' }).click();
+  await expect(tutorial.getByRole('heading', { name: 'Which terminal do you use?' })).toBeVisible();
+  const terminals = tutorial.getByRole('group', { name: 'Terminal app' });
+  await expect(terminals.getByRole('button', { name: 'Terminal' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(terminals.getByRole('button', { name: /iTerm2/ })).toContainText('Not found');
+  await terminals.getByRole('button', { name: /iTerm2/ }).click();
+  await expect(terminals.getByRole('button', { name: /iTerm2/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(terminals.getByRole('button', { name: 'Terminal' })).toHaveAttribute('aria-pressed', 'false');
+  await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByRole('heading', { name: 'Run, watch, and switch' })).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByRole('heading', { name: 'One small file per project' })).toBeVisible();
@@ -193,7 +217,7 @@ test('first launch walks through the tutorial and asks for a projects folder', a
   await expect(tutorial.getByText(/that project’s own folder/)).toBeVisible();
   await tutorial.getByRole('button', { name: 'Finish' }).click();
   await expect(tutorial).toBeHidden();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: ['/Users/developer/projects'], appearance: 'light', onboardingCompleted: true });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: ['/Users/developer/projects'], appearance: 'light', terminal: 'iterm', onboardingCompleted: true });
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Your projects, in one place.' })).toBeVisible();
   await expect(page.getByRole('dialog')).toBeHidden();
@@ -209,7 +233,7 @@ test('the tutorial can be skipped without choosing a folder', async ({ page }) =
 test('the last tutorial step adds a project, shows its setup prompt, and closes', async ({ page }) => {
   await page.goto('/?onboarding&empty');
   const tutorial = page.getByRole('dialog');
-  for (let i = 0; i < 4; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
+  for (let i = 0; i < 5; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
   await tutorial.getByRole('button', { name: 'Skip for now' }).click();
   await tutorial.getByRole('button', { name: 'Add a project' }).click();
   await expect(page.getByRole('dialog', { name: 'Finish your project configuration' })).toBeVisible();
@@ -245,7 +269,7 @@ test('resetting the tutorial in Settings shows it on the next launch', async ({ 
   await page.reload();
   const tutorial = page.getByRole('dialog');
   await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
-  for (let i = 0; i < 4; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
+  for (let i = 0; i < 5; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByText('/Users/developer/code')).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await tutorial.getByRole('button', { name: 'Finish' }).click();
@@ -254,7 +278,7 @@ test('resetting the tutorial in Settings shows it on the next launch', async ({ 
 
 test('Settings fits the default window without scrolling', async ({ page }) => {
   await page.goto('/');
-  await page.evaluate(() => localStorage.setItem('devenv-test-settings', JSON.stringify({ roots: ['/Users/developer/code', '/Users/developer/work', '/Users/developer/oss'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true })));
+  await page.evaluate(() => localStorage.setItem('devenv-test-settings', JSON.stringify({ roots: ['/Users/developer/code', '/Users/developer/work', '/Users/developer/oss'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', terminal: 'ghostty', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true })));
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
   await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();

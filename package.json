@@ -92,7 +92,7 @@
         }
       ],
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "Devenv opens service log tabs in Ghostty."
+        "NSAppleEventsUsageDescription": "Devenv opens service logs and project folders in your terminal app."
       },
       "identity": null
     },
