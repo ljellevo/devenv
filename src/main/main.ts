@@ -28,7 +28,7 @@ let updater: Updater;
 let ready = false, quitting = false, quitRequested = false;
 let sequence = 0;
 const requests = new Map<number, { resolve(value: any): void; reject(error: Error): void }>();
-const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL || '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false };
+const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL || '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: false };
 const state: AppState = { projects: [], settings: defaults, session: null, installState: null, installOutput: '', scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, hasToken: false, theme: themeFromZshrc('') };
 let installOutputTimer: ReturnType<typeof setTimeout> | undefined;
 let watchers: FSWatcher[] = [];
@@ -89,7 +89,7 @@ function trayImage() {
 }
 async function saveSettings(settings: Settings) {
   const previous = state.settings;
-  const next = z.object({ roots: z.array(z.string().min(1)).max(30), exclusions: z.array(z.string().min(1)).max(100), shell: z.string().min(1), releaseRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), appearance: z.enum(['light', 'dark']), projectFolders: z.array(z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(80), parentId: z.string().uuid().nullable() }).strict()).max(200), projectFolderAssignments: z.record(z.string().uuid()), projectTreeOrder: z.record(z.array(z.string().min(1).max(100)).max(5000)), sidebarPinned: z.boolean() }).strict().parse(settings);
+  const next = z.object({ roots: z.array(z.string().min(1)).max(30), exclusions: z.array(z.string().min(1)).max(100), shell: z.string().min(1), releaseRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), appearance: z.enum(['light', 'dark']), projectFolders: z.array(z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(80), parentId: z.string().uuid().nullable() }).strict()).max(200), projectFolderAssignments: z.record(z.string().uuid()), projectTreeOrder: z.record(z.array(z.string().min(1).max(100)).max(5000)), sidebarPinned: z.boolean(), onboardingCompleted: z.boolean() }).strict().parse(settings);
   const folderIds = new Set(next.projectFolders.map(folder => folder.id));
   if (folderIds.size !== next.projectFolders.length) throw new Error('Project folders must have unique IDs.');
   for (const folder of next.projectFolders) {
@@ -237,7 +237,7 @@ async function boot() {
   await refreshTheme();
   try {
     const saved = JSON.parse(await readFile(join(root, 'settings.json'), 'utf8'));
-    state.settings = { ...defaults, ...saved, appearance: saved.appearance === 'light' ? 'light' : 'dark', projectFolders: Array.isArray(saved.projectFolders) ? saved.projectFolders : [], projectFolderAssignments: saved.projectFolderAssignments && typeof saved.projectFolderAssignments === 'object' ? saved.projectFolderAssignments : {}, projectTreeOrder: saved.projectTreeOrder && typeof saved.projectTreeOrder === 'object' ? saved.projectTreeOrder : {}, sidebarPinned: saved.sidebarPinned === true };
+    state.settings = { ...defaults, ...saved, appearance: saved.appearance === 'light' ? 'light' : 'dark', projectFolders: Array.isArray(saved.projectFolders) ? saved.projectFolders : [], projectFolderAssignments: saved.projectFolderAssignments && typeof saved.projectFolderAssignments === 'object' ? saved.projectFolderAssignments : {}, projectTreeOrder: saved.projectTreeOrder && typeof saved.projectTreeOrder === 'object' ? saved.projectTreeOrder : {}, sidebarPinned: saved.sidebarPinned === true, onboardingCompleted: typeof saved.onboardingCompleted === 'boolean' ? saved.onboardingCompleted : Array.isArray(saved.roots) && saved.roots.length > 0 };
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') state.error = 'Settings could not be read. Defaults are in use.'; }
   nativeTheme.themeSource = state.settings.appearance;

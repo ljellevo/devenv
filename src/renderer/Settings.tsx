@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FolderPlus, Trash2, Download, RefreshCw, Check, Github, Sun, Moon } from 'lucide-react';
+import { FolderPlus, Trash2, Download, RefreshCw, Check, Github, Sun, Moon, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -26,6 +26,7 @@ export function Settings({ state, open, setOpen, tab, setTab, run }: { state: Ap
         <label className="block space-y-2"><span className="font-medium">Additional excluded folder names</span><Input value={exclusions} onChange={e => setExclusions(e.target.value)} placeholder="archive, backups" /></label>
         <label className="block space-y-2"><span className="font-medium">Shell</span><Input value={shell} onChange={e => setShell(e.target.value)} /><span className="block text-xs text-muted-foreground">Your login environment supplies PATH. Stop the active session before changing shells.</span></label>
         <Button onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, shell, exclusions: exclusions.split(',').map(s => s.trim()).filter(Boolean) }))}><Check />Save workspace settings</Button>
+        <section className="border-t pt-5"><div className="flex items-center justify-between"><h3 className="font-medium">Tutorial</h3><Button size="sm" variant="outline" disabled={!state.settings.onboardingCompleted} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, onboardingCompleted: false }))}><RotateCcw />Reset tutorial</Button></div><p className="mt-2 text-xs text-muted-foreground">{state.settings.onboardingCompleted ? 'Show the introduction and folder setup again the next time Devenv launches.' : 'The tutorial will show the next time Devenv launches.'}</p></section>
       </TabsContent>
       <TabsContent value="updates" className="space-y-5">
         <div className="rounded-lg border bg-[var(--surface)] p-4"><div className="flex items-center justify-between"><div><div className="font-medium">Devenv</div><div className="mt-1 text-xs text-muted-foreground">Installed version {update.current}</div>{update.checkedAt && <div className="mt-1 text-xs text-muted-foreground">Last checked {new Date(update.checkedAt).toLocaleString()}</div>}</div><Github className="size-5 text-muted-foreground" /></div></div>

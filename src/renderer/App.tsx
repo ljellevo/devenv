@@ -9,6 +9,7 @@ import { ConfigEditor } from './ConfigEditor';
 import { CommandPalette } from './CommandPalette';
 import { Help } from './Help';
 import { ProjectSetup } from './ProjectSetup';
+import { Onboarding } from './Onboarding';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { ProjectTree } from './ProjectTree';
 import { InstallTerminal } from './InstallTerminal';
@@ -35,6 +36,8 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [setupPath, setSetupPath] = useState<string | null>(null);
+  // Decided once per launch, so resetting the tutorial in Settings takes effect on the next launch.
+  const [onboarding, setOnboarding] = useState<boolean>();
   const [configDirty, setConfigDirty] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ kind: 'project'; id: string } | { kind: 'created'; project: { id: string; path: string } } | null>(null);
   const [error, setError] = useState<string>();
@@ -57,6 +60,7 @@ export function App() {
     const consume = (value: AppState) => {
       if (sessionId.current !== value.session?.id) { sessionId.current = value.session?.id; logBuffer.current = []; setLogs([]); }
       setState(value);
+      setOnboarding(shown => shown ?? !value.settings.onboardingCompleted);
     };
     const off = window.devenv.onState(consume);
     const offLog = window.devenv.onLog(entry => { logBuffer.current = [...logBuffer.current, entry].slice(-1500); });
@@ -197,6 +201,7 @@ export function App() {
     <CommandPalette state={state} open={paletteOpen} setOpen={setPaletteOpen} onProject={selectProject} onCreate={() => void createProject()} onAddFolder={() => run(() => window.devenv.addFolder())} onHelp={() => setHelpOpen(true)} onSettings={() => { setSettingsTab('workspace'); setSettings(true); }} />
     <Help open={helpOpen} onOpenChange={setHelpOpen} />
     <ProjectSetup path={setupPath} onClose={() => setSetupPath(null)} />
+    <Onboarding state={state} open={!!onboarding} run={run} onDone={() => { setOnboarding(false); run(() => window.devenv.saveSettings({ ...state.settings, onboardingCompleted: true })); }} />
     <Dialog open={!!pendingAction} onOpenChange={open => { if (!open) setPendingAction(null); }}><DialogContent><DialogTitle>Discard unsaved configuration edits?</DialogTitle><DialogDescription>Your edits have not been saved to devenv.toml.</DialogDescription><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setPendingAction(null)}>Keep editing</Button><Button variant="destructive" onClick={confirmDiscard}>Discard and continue</Button></div></DialogContent></Dialog>
     {settings && <Settings state={state} open={settings} setOpen={setSettings} tab={settingsTab} setTab={setSettingsTab} run={run} />}
   </div>;
