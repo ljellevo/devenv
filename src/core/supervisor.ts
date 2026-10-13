@@ -1,18 +1,20 @@
-import { createProjectConfig } from './project-create';
+import { createProjectConfig, writeAgentGuide } from './project-create';
 import { createInterface } from 'node:readline';
 import { realpath, readdir, stat } from 'node:fs/promises';
 import { discover, validateProjectText, loadProject } from './config';
 import { readConfigDocument, saveConfigDocument } from './config-files';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Engine } from './engine';
 import { alive, message, shellEnvironment } from './process';
 import { Installer } from './installer';
+import { Harnesses } from './harness';
 
 const stdio = process.argv[2] === '--stdio';
 const [root, initialShell] = process.argv.slice(stdio ? 3 : 2);
 let engine: Engine;
 let installer: Installer;
+let harnesses: Harnesses;
 let shuttingDown = false;
 const send = (value: unknown) => { if (stdio) process.stdout.write(JSON.stringify(value) + '\n'); else if (process.connected) process.send?.(value); };
 const lock = join(root, 'supervisor.lock');
@@ -30,6 +32,9 @@ async function initialize() {
   const env = await shellEnvironment(initialShell);
   engine = new Engine(root, initialShell, env);
   installer = new Installer(initialShell, env, () => engine.stop());
+  harnesses = new Harnesses(initialShell, env);
+  harnesses.on('output', harness => send({ event: 'harness-output', harness }));
+  harnesses.on('exit', harness => send({ event: 'harness-exit', harness }));
   installer.on('state', state => send({ event: 'install-state', state }));
   installer.on('output', output => send({ event: 'install-output', output }));
   engine.on('state', session => send({ event: 'state', session }));
@@ -44,6 +49,7 @@ async function handleRequest(request: { id: number; method: string; value?: stri
     let value: unknown;
     switch (request.method) {
       case 'create-project': { const file = await createProjectConfig(await realpath(request.value!)); value = await loadProject(file); break; }
+      case 'create-agent-guide': value = await writeAgentGuide(request.value!); break;
       case 'load-project': value = await loadProject(request.value!); break;
       case 'discover': { const args = JSON.parse(request.value!); value = await discover(args.roots, args.exclusions); break; }
       case 'read-config': value = await readConfigDocument(request.value!); break;
@@ -64,11 +70,15 @@ async function handleRequest(request: { id: number; method: string; value?: stri
       case 'install-cancel': await installer.shutdown(); break;
       case 'install-input': installer.input(request.value!); break;
       case 'install-resize': { const size = JSON.parse(request.value!) as { cols: number; rows: number }; installer.resize(size.cols, size.rows); break; }
+      case 'harness-open': { const args = JSON.parse(request.value!) as { id: string; path: string; command: string; cols: number; rows: number; restart: boolean }; value = await harnesses.open(args.id, { ...args, cwd: dirname(args.path) }); break; }
+      case 'harness-input': { const args = JSON.parse(request.value!) as { id: string; data: string }; harnesses.input(args.id, args.data); break; }
+      case 'harness-resize': { const args = JSON.parse(request.value!) as { id: string; cols: number; rows: number }; harnesses.resize(args.id, args.cols, args.rows); break; }
+      case 'harness-close': await harnesses.close((JSON.parse(request.value!) as { id: string }).id); break;
       case 'stop-one': value = await engine.stopOne(request.value!); break;
       case 'restart': value = await engine.restart(request.value!); break;
       case 'logs': value = engine.logs?.read(request.value) ?? []; break;
       case 'log-directory': value = engine.logs?.directory; break;
-      case 'shell': { const env = await shellEnvironment(request.value!); engine.configure(request.value!, env); installer.configure(request.value!, env); break; }
+      case 'shell': { const env = await shellEnvironment(request.value!); engine.configure(request.value!, env); installer.configure(request.value!, env); harnesses.configure(request.value!, env); break; }
       default: throw new Error('Unknown supervisor method');
     }
     send({ id: request.id, value });
@@ -82,7 +92,7 @@ if (stdio) {
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
-  try { await ready; await installer.shutdown(); await engine.stop(); }
+  try { await ready; await harnesses.shutdown(); await installer.shutdown(); await engine.stop(); }
   catch (error) { console.error(message(error)); }
   finally {
     // Only release our own lock, never a newer supervisor's.

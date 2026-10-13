@@ -40,7 +40,10 @@ button { cursor: pointer; } button:disabled { cursor: default; }
 ::-webkit-scrollbar { width: 7px; height: 7px; } ::-webkit-scrollbar-thumb { background: #596270; border-radius: 8px; }
 .console::-webkit-scrollbar-thumb { background: #596270; }
 .terminal-panel { color-scheme: dark; }
+.log-tabs::-webkit-scrollbar { display: none; }
 .install-terminal .xterm,
-.install-terminal .xterm-viewport { background-color: #282C34 !important; }
+.install-terminal .xterm-viewport,
+.harness-terminal .xterm,
+.harness-terminal .xterm-viewport { background-color: #282C34 !important; }
 @keyframes pulse-dot { 50% { opacity: .35; } }
 .status-pulse { animation: pulse-dot 1.5s infinite; }

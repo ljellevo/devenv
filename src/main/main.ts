@@ -15,17 +15,19 @@ import { join, resolve, isAbsolute, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { z } from 'zod';
 import { discover, projectId, validateProjectText } from '../core/config';
-import { coveredBySearchRoot, createProjectConfig } from '../core/project-create';
+import { coveredBySearchRoot, createProjectConfig, writeAgentGuide } from '../core/project-create';
 import { readConfigDocument, saveConfigDocument } from '../core/config-files';
 import { themeFromZshrc } from '../core/theme';
-import { message } from '../core/process';
+import { delay, message } from '../core/process';
 import { Updater } from '../core/updater';
 import { startUpdatePolling } from '../core/update-polling';
 import { openDirectoryTerminal, openSessionTerminal } from './terminals';
+import { HarnessActivity } from './harness-activity';
 import { terminalApps, terminalLabel } from '../shared/terminals';
+import { harnesses, harnessCommand, projectHarness } from '../shared/harnesses';
 import trayIcon from './trayTemplate.png';
 import trayIcon2x from './trayTemplate@2x.png';
-import type { AppState, ConfigValidation, InstallState, Settings, Session, TerminalApp } from '../shared/types';
+import type { AppState, ConfigValidation, HarnessExit, HarnessOutput, HarnessSnapshot, InstallState, Settings, Session, TerminalApp } from '../shared/types';
 
 app.setName('Devenv');
 if (process.env.DEVENV_SMOKE_TEST === '1' && process.argv.includes('--devenv-smoke-test')) { const profile = process.argv.find(arg => arg.startsWith('--user-data-dir='))?.slice('--user-data-dir='.length); if (!profile) throw new Error('Smoke tests require an isolated profile'); app.setPath('userData', resolve(profile)); }
@@ -44,7 +46,7 @@ function companion(distribution: string) {
     const current = client;
     // The companion stops its services when the connection drops; the next request reconnects and recovers its journal.
     client.on('failure', error => { if (activeWsl !== current) return; state.session = null; state.installState = null; report(error); });
-    client.on('message', data => { if (activeWsl === current) receiveSupervisor(data as Parameters<typeof receiveSupervisor>[0]); });
+    client.on('message', data => { if (activeWsl === current || harnessEvent(data)) receiveSupervisor(data as Parameters<typeof receiveSupervisor>[0]); });
     companions.set(distribution, client);
   }
   return client;
@@ -71,8 +73,16 @@ let sequence = 0;
 let transitionQueue: Promise<unknown> = Promise.resolve();
 function transition<T>(action: () => Promise<T>) { const next = transitionQueue.then(action); transitionQueue = next.catch(() => {}); return next; }
 const requests = new Map<number, { resolve(value: any): void; reject(error: Error): void }>();
-const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL || (process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'), releaseRepo: 'ljellevo/devenv', appearance: 'system', terminal: 'terminal', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: false };
-const state: AppState = { hostPlatform: platform, projects: [], settings: defaults, session: null, installState: null, installOutput: '', scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, theme: themeFromZshrc(''), installedTerminals: [] };
+const defaults: Settings = { roots: [], exclusions: [], shell: process.env.SHELL || (process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'), releaseRepo: 'ljellevo/devenv', appearance: 'system', terminal: 'terminal', harness: 'claude', harnessCommand: '', projectHarnesses: {}, projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: false };
+const state: AppState = { hostPlatform: platform, projects: [], settings: defaults, session: null, installState: null, installOutput: '', scanning: false, scanErrors: [], update: { status: 'idle', current: app.getVersion() }, theme: themeFromZshrc(''), installedTerminals: [], harnesses: {} };
+// Harness terminals stay with the supervisor that launched them, whichever execution target is active.
+const harnessHosts = new Map<string, WslClient | undefined>();
+const harnessActivity = new HarnessActivity(state.harnesses, publish);
+const harnessEvent = (data: unknown) => /^harness-/.test((data as { event?: string }).event ?? '');
+function harnessRpc<T = void>(id: string, method: string, value: object = {}): Promise<T> {
+  const host = harnessHosts.get(id), payload = JSON.stringify({ id, ...value });
+  return host ? host.request<T>(method, payload) : hostRpc<T>(method, payload);
+}
 let installOutputTimer: ReturnType<typeof setTimeout> | undefined;
 let watchers: FSWatcher[] = [];
 let scanTimer: ReturnType<typeof setTimeout>;
@@ -86,8 +96,8 @@ function publish() {
 }
 function report(error: unknown) { state.error = message(error); publish(); }
 function action(fn: () => Promise<unknown>) { void fn().catch(report); }
-function rpc<T = void>(method: string, value?: string): Promise<T> {
-  if (activeWsl) return activeWsl.request<T>(method, value);
+function rpc<T = void>(method: string, value?: string): Promise<T> { return activeWsl ? activeWsl.request<T>(method, value) : hostRpc<T>(method, value); }
+function hostRpc<T = void>(method: string, value?: string): Promise<T> {
   return new Promise((resolve, reject) => {
     if (!ready || !worker?.connected) return reject(new Error(state.error || 'Session supervisor is not ready yet.'));
     const id = ++sequence; requests.set(id, { resolve, reject }); worker.send({ id, method, value });
@@ -158,7 +168,8 @@ function trayImage() {
 }
 async function saveSettings(settings: Settings) {
   const previous = state.settings;
-  const next = z.object({ projectTargets: z.record(z.discriminatedUnion('kind', [z.object({ kind: z.literal('native') }), z.object({ kind: z.literal('wsl'), distribution: z.string().min(1) })])).optional(), searchRoots: z.array(z.object({ path: z.string().min(1), target: z.discriminatedUnion('kind', [z.object({ kind: z.literal('native') }), z.object({ kind: z.literal('wsl'), distribution: z.string().min(1) })]) })).max(30).optional(), roots: z.array(z.string().min(1)).max(30), exclusions: z.array(z.string().min(1)).max(100), shell: z.string().min(1), releaseRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), appearance: z.enum(['light', 'dark', 'system']), terminal: z.enum(['terminal', 'iterm', 'ghostty', 'powershell']), projectFolders: z.array(z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(80), parentId: z.string().uuid().nullable() }).strict()).max(200), projectFolderAssignments: z.record(z.string().uuid()), projectTreeOrder: z.record(z.array(z.string().min(1).max(100)).max(5000)), sidebarPinned: z.boolean(), onboardingCompleted: z.boolean() }).strict().parse(settings);
+  const harnessChoice = { harness: z.enum(['claude', 'codex', 'custom']), harnessCommand: z.string().trim().max(500).regex(/^[^\r\n\0]*$/, 'Use a single-line command.') };
+  const next = z.object({ projectTargets: z.record(z.discriminatedUnion('kind', [z.object({ kind: z.literal('native') }), z.object({ kind: z.literal('wsl'), distribution: z.string().min(1) })])).optional(), searchRoots: z.array(z.object({ path: z.string().min(1), target: z.discriminatedUnion('kind', [z.object({ kind: z.literal('native') }), z.object({ kind: z.literal('wsl'), distribution: z.string().min(1) })]) })).max(30).optional(), roots: z.array(z.string().min(1)).max(30), exclusions: z.array(z.string().min(1)).max(100), shell: z.string().min(1), releaseRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), appearance: z.enum(['light', 'dark', 'system']), terminal: z.enum(['terminal', 'iterm', 'ghostty', 'powershell']), ...harnessChoice, projectHarnesses: z.record(z.object(harnessChoice).strict()), projectFolders: z.array(z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(80), parentId: z.string().uuid().nullable() }).strict()).max(200), projectFolderAssignments: z.record(z.string().uuid()), projectTreeOrder: z.record(z.array(z.string().min(1).max(100)).max(5000)), sidebarPinned: z.boolean(), onboardingCompleted: z.boolean() }).strict().parse(settings);
   if (!terminalsFor(platform).some(t => t.value === next.terminal)) throw new Error('Terminal is not supported on this platform.');
   if (JSON.stringify(next.projectTargets) !== JSON.stringify(previous.projectTargets) && (state.installState?.status === 'running' || state.session && !['stopped', 'failed'].includes(state.session.status))) throw new Error('Stop active work before changing execution targets.');
   next.searchRoots = [...next.roots.map(path => ({ path, target: { kind: 'native' as const } })), ...(next.searchRoots ?? []).filter(root => root.target.kind === 'wsl')];
@@ -310,7 +321,8 @@ function registerIPC() {
       if (!source) throw new Error('Linux filesystem projects remain in their search folder distribution. Add a mounted Windows folder to use native execution.');
       let nextId = projectId(source);
       if (target.kind === 'wsl') { const path = await translatePath(target.distribution, source); const remote = await companion(target.distribution).request<Project>('load-project', path); nextId = remote.id; }
-      const settings = { ...state.settings, projectTargets: { ...state.settings.projectTargets, [source]: target }, projectFolderAssignments: { ...state.settings.projectFolderAssignments }, projectTreeOrder: { ...state.settings.projectTreeOrder } };
+      const settings = { ...state.settings, projectTargets: { ...state.settings.projectTargets, [source]: target }, projectHarnesses: { ...state.settings.projectHarnesses }, projectFolderAssignments: { ...state.settings.projectFolderAssignments }, projectTreeOrder: { ...state.settings.projectTreeOrder } };
+      if (nextId !== project.id && settings.projectHarnesses[project.id]) { settings.projectHarnesses[nextId] = settings.projectHarnesses[project.id]; delete settings.projectHarnesses[project.id]; }
       if (nextId !== project.id && settings.projectFolderAssignments[project.id]) { settings.projectFolderAssignments[nextId] = settings.projectFolderAssignments[project.id]; delete settings.projectFolderAssignments[project.id]; }
       for (const [key, order] of Object.entries(settings.projectTreeOrder)) settings.projectTreeOrder[key] = order.map(item => item === `p:${project.id}` ? `p:${nextId}` : item);
       await saveSettings(settings); await scan(); return nextId;
@@ -338,12 +350,14 @@ function registerIPC() {
         await saveSettings({ ...state.settings, roots: [...new Set(roots)], searchRoots: remote });
       }
     },
-    createProject: async (): Promise<{ id: string; path: string } | null> => {
-      const selection = await dialog.showOpenDialog(window!, { properties: ['openDirectory'], title: 'Choose a folder for the new devenv.toml' });
+    // With an agent guide this starts a new project: the folder may be created in the dialog, and gets an AGENTS.md beside devenv.toml.
+    createProject: async (agentGuide: unknown): Promise<{ id: string; path: string } | null> => {
+      const selection = await dialog.showOpenDialog(window!, agentGuide === true ? { properties: ['openDirectory', 'createDirectory'], title: 'Choose or create a folder for the new project', buttonLabel: 'Create project' } : { properties: ['openDirectory'], title: 'Choose a folder for the new devenv.toml' });
       if (selection.canceled || !selection.filePaths[0]) return null;
       const unc = wslUNC(selection.filePaths[0]);
       if (unc) {
         const project = await companion(unc.distribution).request<Project>('create-project', unc.path);
+        if (agentGuide === true) await companion(unc.distribution).request('create-agent-guide', unc.path);
         const roots = state.settings.searchRoots ?? [];
         if (!roots.some(root => root.target.kind === 'wsl' && root.target.distribution === unc.distribution && (unc.path === root.path || unc.path.startsWith(root.path.replace(/\/$/, '') + '/')))) await saveSettings({ ...state.settings, searchRoots: [...roots, { path: unc.path, target: { kind: 'wsl', distribution: unc.distribution } }] });
         else await scan();
@@ -353,6 +367,7 @@ function registerIPC() {
       const covered = await coveredBySearchRoot(directory, state.settings.roots);
       if (!covered && state.settings.roots.length >= 30) throw new Error('Remove a search folder in Settings before creating another project.');
       const file = await createProjectConfig(directory);
+      if (agentGuide === true) await writeAgentGuide(directory);
       if (covered) await scan();
       else await saveSettings({ ...state.settings, roots: [...state.settings.roots, directory] });
       return { id: projectId(file), path: file };
@@ -360,6 +375,21 @@ function registerIPC() {
     openTerminal: terminal,
     openConfigFinder: async (id: unknown) => { const project = configProject(id); const target = project.executionTarget; if (target?.kind === 'wsl') { await configCompanion(id)!.request('read-config', project.path); shell.showItemInFolder(explorerPath(target.distribution, project.path)); } else shell.showItemInFolder((await readConfigDocument(project.path)).path); },
     openConfigTerminal: async (id: unknown) => { const project = configProject(id); const target = project.executionTarget; if (target?.kind === 'wsl') { await configCompanion(id)!.request('read-config', project.path); await openWslTerminal(state.settings.terminal, target.distribution, posix.dirname(project.path)); } else await openDirectoryTerminal(state.settings.terminal, dirname((await readConfigDocument(project.path)).path)); },
+    harnessOpen: async (id: unknown, cols: unknown, rows: unknown, restart: unknown) => {
+      const project = configProject(id), command = harnessCommand(projectHarness(state.settings, project.id));
+      if (!command) throw new Error('Enter a command for your custom harness first.');
+      const size = { cols: z.number().int().min(1).max(500).parse(cols), rows: z.number().int().min(1).max(200).parse(rows) };
+      // A running harness stays with its supervisor; only a new one follows the project's current target.
+      if (!harnessHosts.has(project.id)) harnessHosts.set(project.id, configCompanion(id));
+      // The Terminal tab can be opened while the supervisor is still reading the login environment.
+      for (const deadline = Date.now() + 15000; !ready && !harnessHosts.get(project.id) && Date.now() < deadline;) await delay(100);
+      const snapshot = await harnessRpc<HarnessSnapshot>(project.id, 'harness-open', { path: project.path, command, ...size, restart: restart === true });
+      harnessActivity.opened(project.id, snapshot);
+      return snapshot;
+    },
+    harnessInput: (id: unknown, data: unknown) => { const key = z.string().parse(id); if (harnessHosts.has(key)) { harnessActivity.touch(key); return harnessRpc(key, 'harness-input', { data: z.string().max(1024 * 1024).parse(data) }); } },
+    harnessResize: (id: unknown, cols: unknown, rows: unknown) => { const key = z.string().parse(id); if (harnessHosts.has(key)) { harnessActivity.touch(key); return harnessRpc(key, 'harness-resize', { cols: z.number().int().min(1).max(500).parse(cols), rows: z.number().int().min(1).max(200).parse(rows) }); } },
+    harnessClose: async (id: unknown) => { const key = z.string().parse(id); if (!harnessHosts.has(key)) return; await harnessRpc(key, 'harness-close'); harnessHosts.delete(key); },
     readConfig: (id: unknown) => configCompanion(id)?.request('read-config', configPath(id)) ?? readConfigDocument(configPath(id)),
     validateConfig: async (id: unknown, text: unknown): Promise<ConfigValidation> => {
       const path = configPath(id);
@@ -390,12 +420,12 @@ function registerIPC() {
     if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Untrusted IPC sender');
     try {
       const result = await (['start', 'startService', 'install', 'setProjectTarget', 'restart'].includes(name) ? transition(async () => handler(...args)) : handler(...args));
-      if (!['state', 'logs'].includes(name)) { state.error = undefined; publish(); }
+      if (!['state', 'logs', 'harnessInput', 'harnessResize'].includes(name)) { state.error = undefined; publish(); }
       return result;
     } catch (error) { report(error); throw error; }
   });
 }
-function receiveSupervisor(data: { id?: number; value?: unknown; error?: string; event?: string; session?: Session; entry?: unknown; state?: InstallState; output?: string }) {
+function receiveSupervisor(data: { id?: number; value?: unknown; error?: string; event?: string; session?: Session; entry?: unknown; state?: InstallState; output?: string; harness?: unknown }) {
     if (data.id) {
       const request = requests.get(data.id); requests.delete(data.id);
       if (data.error) request?.reject(new Error(data.error)); else request?.resolve(data.value);
@@ -407,6 +437,7 @@ function receiveSupervisor(data: { id?: number; value?: unknown; error?: string;
       state.installOutput = (state.installOutput + (data.output ?? '')).slice(-120000);
       if (!installOutputTimer) installOutputTimer = setTimeout(() => { installOutputTimer = undefined; if (window && !window.isDestroyed()) window.webContents.send('devenv:state', state); }, 80);
     }
+    else if (data.event === 'harness-output' || data.event === 'harness-exit') { harnessActivity.event(data.harness as HarnessOutput | HarnessExit); if (window && !window.isDestroyed()) window.webContents.send(`devenv:${data.event}`, data.harness); }
     else if (data.event === 'fatal') report(data.error);
 }
 async function boot() {
@@ -417,7 +448,7 @@ async function boot() {
   if (platform === 'windows' && !state.installedTerminals.includes('terminal')) defaults.terminal = 'powershell';
   try {
     const saved = JSON.parse(await readFile(join(root, 'settings.json'), 'utf8'));
-    state.settings = { ...defaults, ...saved, appearance: ['light', 'dark', 'system'].includes(saved.appearance) ? saved.appearance : defaults.appearance, terminal: terminalsFor(platform).some(t => t.value === saved.terminal) ? saved.terminal : defaults.terminal, projectFolders: Array.isArray(saved.projectFolders) ? saved.projectFolders : [], projectFolderAssignments: saved.projectFolderAssignments && typeof saved.projectFolderAssignments === 'object' ? saved.projectFolderAssignments : {}, projectTreeOrder: saved.projectTreeOrder && typeof saved.projectTreeOrder === 'object' ? saved.projectTreeOrder : {}, sidebarPinned: saved.sidebarPinned === true, onboardingCompleted: typeof saved.onboardingCompleted === 'boolean' ? saved.onboardingCompleted : Array.isArray(saved.roots) && saved.roots.length > 0 };
+    state.settings = { ...defaults, ...saved, appearance: ['light', 'dark', 'system'].includes(saved.appearance) ? saved.appearance : defaults.appearance, terminal: terminalsFor(platform).some(t => t.value === saved.terminal) ? saved.terminal : defaults.terminal, harness: harnesses.some(h => h.value === saved.harness) ? saved.harness : defaults.harness, harnessCommand: typeof saved.harnessCommand === 'string' ? saved.harnessCommand : '', projectHarnesses: saved.projectHarnesses && typeof saved.projectHarnesses === 'object' ? saved.projectHarnesses : {}, projectFolders: Array.isArray(saved.projectFolders) ? saved.projectFolders : [], projectFolderAssignments: saved.projectFolderAssignments && typeof saved.projectFolderAssignments === 'object' ? saved.projectFolderAssignments : {}, projectTreeOrder: saved.projectTreeOrder && typeof saved.projectTreeOrder === 'object' ? saved.projectTreeOrder : {}, sidebarPinned: saved.sidebarPinned === true, onboardingCompleted: typeof saved.onboardingCompleted === 'boolean' ? saved.onboardingCompleted : Array.isArray(saved.roots) && saved.roots.length > 0 };
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') state.error = 'Settings could not be read. Defaults are in use.'; }
   // Migrate native roots without changing native project IDs or folder assignments.
@@ -428,7 +459,7 @@ async function boot() {
   // Electron's net.fetch cancels manual redirects, which GitHub uses for release assets.
   updater = new Updater(root, app.getVersion(), process.arch, update => { state.update = update; publish(); });
   worker = fork(join(__dirname, 'supervisor.cjs'), [root, state.settings.shell], { execPath: process.execPath, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, detached: true, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
-  worker.on('message', data => { if (!activeWsl || (data as { id?: number }).id) receiveSupervisor(data as Parameters<typeof receiveSupervisor>[0]); });
+  worker.on('message', data => { if (!activeWsl || (data as { id?: number }).id || harnessEvent(data)) receiveSupervisor(data as Parameters<typeof receiveSupervisor>[0]); });
   worker.on('error', report);
   worker.on('exit', code => {
     ready = false; for (const request of requests.values()) request.reject(new Error('Session supervisor exited')); requests.clear();

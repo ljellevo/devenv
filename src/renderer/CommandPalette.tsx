@@ -1,4 +1,4 @@
-import { CircleHelp, FolderPlus, FolderSearch, Layers3, Settings2 } from 'lucide-react';
+import { CircleHelp, FilePlus2, FolderPlus, FolderSearch, Layers3, Settings2 } from 'lucide-react';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from '@/components/ui/command';
 import { orderedChildren } from '../shared/project-tree';
 import type { AppState, Project } from '../shared/types';
@@ -18,9 +18,9 @@ function orderedProjects(state: AppState): Project[] {
   return activeId ? [...result.filter(project => project.id === activeId), ...result.filter(project => project.id !== activeId)] : result;
 }
 
-export function CommandPalette({ state, open, setOpen, onProject, onCreate, onAddFolder, onHelp, onSettings }: {
+export function CommandPalette({ state, open, setOpen, onProject, onCreate, onAdd, onAddFolder, onHelp, onSettings }: {
   state: AppState; open: boolean; setOpen(open: boolean): void; onProject(id: string): void;
-  onCreate(): void; onAddFolder(): void; onHelp(): void; onSettings(): void;
+  onCreate(): void; onAdd(): void; onAddFolder(): void; onHelp(): void; onSettings(): void;
 }) {
   const activeId = state.session && !['stopped', 'failed'].includes(state.session.status) ? state.session.project.id : undefined;
   const choose = (action: () => void) => { setOpen(false); action(); };
@@ -28,7 +28,7 @@ export function CommandPalette({ state, open, setOpen, onProject, onCreate, onAd
     <CommandInput autoFocus placeholder="Search projects or commands…" aria-label="Search projects and commands" />
     <CommandList>
       <CommandEmpty>No matching projects or commands.</CommandEmpty>
-      <CommandGroup heading="Create"><CommandItem value="Add a project" onSelect={() => choose(onCreate)}><FolderPlus className="size-4 text-primary" />Add a project</CommandItem></CommandGroup>
+      <CommandGroup heading="Create"><CommandItem value="Create project new" onSelect={() => choose(onCreate)}><FilePlus2 className="size-4 text-primary" />Create project</CommandItem><CommandItem value="Add a project existing" onSelect={() => choose(onAdd)}><FolderPlus className="size-4 text-primary" />Add a project</CommandItem></CommandGroup>
       <CommandSeparator />
       <CommandGroup heading="Projects">{orderedProjects(state).map(project => {
         const serviceCount = project.services.filter(service => service.enabled).length;

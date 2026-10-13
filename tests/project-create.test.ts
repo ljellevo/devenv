@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'vitest';
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { coveredBySearchRoot, createProjectConfig } from '../src/core/project-create';
+import { coveredBySearchRoot, createProjectConfig, writeAgentGuide } from '../src/core/project-create';
 import { discover } from '../src/core/config';
 
 const directories: string[] = [];
@@ -48,4 +48,39 @@ test('uses an existing search root for nested projects and resolves root aliases
   expect(await coveredBySearchRoot(project, [alias])).toBe(true);
   expect(await coveredBySearchRoot(sibling, [join(directory, 'apps')])).toBe(false);
   expect(await coveredBySearchRoot(project, [sibling])).toBe(false);
+});
+
+test('writes an AGENTS.md that tells the agent to keep devenv.toml current, without replacing existing instructions', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'devenv-agent-guide-')));
+  directories.push(directory);
+  const file = await writeAgentGuide(directory);
+  expect(file).toBe(join(directory, 'AGENTS.md'));
+  const created = await readFile(file, 'utf8');
+  expect(created).toMatch(/^# Agent instructions\n\n## Devenv\n/);
+  expect(created).toContain('**Always keep `devenv.toml` up to date.**');
+  expect(created).toMatch(/installed or run, update `devenv\.toml` in the same change/);
+  expect(created).toContain('[[install.steps]]');
+  // Running it again changes nothing.
+  await writeAgentGuide(directory);
+  expect(await readFile(file, 'utf8')).toBe(created);
+
+  await writeFile(file, '# Our rules\n\nUse tabs.\n');
+  await writeAgentGuide(directory);
+  const appended = await readFile(file, 'utf8');
+  expect(appended).toMatch(/^# Our rules\n\nUse tabs\.\n\n## Devenv\n/);
+  expect(appended.match(/^## Devenv$/gm)).toHaveLength(1);
+  await writeAgentGuide(directory);
+  expect(await readFile(file, 'utf8')).toBe(appended);
+});
+
+test('the example in the agent guide is a valid project', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'devenv-agent-example-')));
+  directories.push(directory);
+  await mkdir(join(directory, 'api'));
+  const guide = await readFile(await writeAgentGuide(directory), 'utf8');
+  await writeFile(join(directory, 'devenv.toml'), guide.match(/```toml\n([\s\S]*?)```/)![1]);
+  const { projects } = await discover([directory]);
+  expect(projects[0].error).toBeUndefined();
+  expect(projects[0].services.map(service => service.name)).toEqual(['db', 'api']);
+  expect(projects[0].install?.steps.map(step => step.id)).toEqual(['dependencies']);
 });

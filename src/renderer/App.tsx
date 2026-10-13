@@ -2,11 +2,11 @@ import { ExecutionTargetPicker } from './ExecutionTargetPicker';
 import { fileManager, platformName, shortcutModifier } from '../shared/platform';
 import type { HelpContext } from '../shared/help';
 import { useEffect, useRef, useState } from 'react';
-import { Terminal, Play, Square, ArrowLeftRight, FolderPlus, FolderOpen, Search, Settings2, RefreshCw, FileCode2, ChevronRight, Layers3, CircleAlert, Copy, Pause, ArrowDownToLine, Check, Radio, Circle, ExternalLink, CircleHelp, Download, ChevronDown, Pin, PinOff } from 'lucide-react';
+import { Terminal, Play, Square, ArrowLeftRight, FolderPlus, FolderOpen, Search, Settings2, RefreshCw, FileCode2, ChevronRight, Layers3, CircleAlert, Copy, Pause, ArrowDownToLine, Check, Radio, Circle, ExternalLink, CircleHelp, Download, ChevronDown, Pin, PinOff, Logs } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
+import { cn, shortPath } from '@/lib/utils';
 import { Settings, type SettingsTab } from './Settings';
 import { ConfigEditor } from './ConfigEditor';
 import { CommandPalette } from './CommandPalette';
@@ -17,14 +17,16 @@ import { useResolvedAppearance } from './appearance';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { ProjectTree } from './ProjectTree';
 import { InstallPanel } from './InstallPanel';
+import { HarnessTerminal } from './HarnessTerminal';
 import { terminalLabel } from '../shared/terminals';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { AppState, LogEntry, ServiceStatus } from '../shared/types';
 
 const statusStyle: Record<ServiceStatus, string> = { pending: 'bg-slate-50 text-slate-500', starting: 'bg-amber-50 text-amber-700 border-amber-200', running: 'bg-emerald-50 text-emerald-700 border-emerald-200', ready: 'bg-emerald-50 text-emerald-700 border-emerald-200', completed: 'bg-sky-50 text-sky-700 border-sky-200', failed: 'bg-red-50 text-red-700 border-red-200', stopping: 'bg-amber-50 text-amber-700 border-amber-200', stopped: 'bg-slate-50 text-slate-500' };
+type View = 'services' | 'logs' | 'config' | 'install';
+const logTabClass = 'shrink-0 rounded px-2 py-1 text-[10px] font-normal text-[#7F8A99] hover:text-[var(--terminal-foreground)] data-[state=active]:bg-[#383E4A] data-[state=active]:text-[var(--terminal-foreground)] data-[state=active]:shadow-none';
 const stopButtonClass = 'text-destructive hover:bg-destructive/10 hover:text-destructive';
 function Status({ status }: { status: ServiceStatus }) { return <Badge className={cn('gap-1.5 capitalize', statusStyle[status])}><span className={cn('size-1.5 rounded-full bg-current', ['starting', 'stopping'].includes(status) && 'status-pulse')} />{status}</Badge>; }
-function shortPath(path: string) { return path.replace(/^\/Users\/[^/]+\//, '~/'); }
 // Strip terminal control sequences before rendering. Logs are always text, never HTML.
 function clean(text: string) { return text.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\r(?!\n)/g, '\n'); }
 
@@ -34,7 +36,10 @@ export function App() {
   const [search, setSearch] = useState('');
   const [settings, setSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
-  const [view, setView] = useState<'services' | 'terminal' | 'config' | 'install'>('services');
+  const [view, setView] = useState<View>('services');
+  // The project whose harness sheet is open, so choosing another project never launches a harness by itself.
+  const [terminalProject, setTerminalProject] = useState<string>();
+  const shownProject = useRef<string | undefined>(undefined);
   const [installMenu, setInstallMenu] = useState(false);
   const installMenuHost = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -46,7 +51,7 @@ export function App() {
   // Decided once per launch, so resetting the tutorial in Settings takes effect on the next launch.
   const [onboarding, setOnboarding] = useState<boolean>();
   const [configDirty, setConfigDirty] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{ kind: 'project'; id: string } | { kind: 'created'; project: { id: string; path: string } } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ kind: 'project'; id: string } | { kind: 'created'; project: { id: string; path: string }; prompt: boolean } | null>(null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -93,6 +98,12 @@ export function App() {
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPaletteOpen(open => !open); }
+      // Space opens the selected project's agent terminal, unless a text field or another control has the key.
+      if (event.key !== ' ' || event.repeat || event.metaKey || event.ctrlKey || event.altKey || !shownProject.current) return;
+      const target = event.target as HTMLElement;
+      const row = target.closest<HTMLElement>('[data-tree-kind="project"]');
+      if (row ? row.dataset.treeId !== shownProject.current : !!target.closest('button, a, input, textarea, select, summary, [contenteditable], [role="tab"], [role="dialog"], [role="menu"]')) return;
+      event.preventDefault(); setTerminalProject(shownProject.current);
     };
     document.addEventListener('keydown', shortcut);
     return () => document.removeEventListener('keydown', shortcut);
@@ -114,19 +125,21 @@ export function App() {
     if (configDirty) { setPendingAction({ kind: 'project', id }); return; }
     setSelected(id); setInstallMenu(false); setServiceFilter(''); setView('services'); setSidebarOpen(false);
   };
-  const showCreatedProject = (created: { id: string; path: string }) => { setSelected(created.id); setServiceFilter(''); setView('config'); setSidebarOpen(false); setSetupPath(created.path); };
-  const createProject = async () => {
-    setError(undefined); setBusy(true);
-    try { const created = await window.devenv.createProject(); if (created) { if (configDirty) setPendingAction({ kind: 'created', project: created }); else showCreatedProject(created); } return !!created; }
+  // A project created with an agent guide carries its own instructions, so it skips the setup prompt.
+  const showCreatedProject = (created: { id: string; path: string }, prompt: boolean) => { setSelected(created.id); setServiceFilter(''); setView('config'); setSidebarOpen(false); if (prompt) setSetupPath(created.path); };
+  const createProject = async (agentGuide = false) => {
+    setError(undefined); setBusy(true); setInstallMenu(false);
+    try { const created = await window.devenv.createProject(agentGuide); if (created) { if (configDirty) setPendingAction({ kind: 'created', project: created, prompt: !agentGuide }); else showCreatedProject(created, !agentGuide); } return !!created; }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); return false; }
     finally { setBusy(false); }
   };
-  const confirmDiscard = () => { const action = pendingAction; setPendingAction(null); if (action) setConfigDirty(false); if (action?.kind === 'project') { setSelected(action.id); setServiceFilter(''); setView('services'); setSidebarOpen(false); } else if (action?.kind === 'created') showCreatedProject(action.project); };
+  const confirmDiscard = () => { const action = pendingAction; setPendingAction(null); if (action) setConfigDirty(false); if (action?.kind === 'project') { setSelected(action.id); setServiceFilter(''); setView('services'); setSidebarOpen(false); } else if (action?.kind === 'created') showCreatedProject(action.project, action.prompt); };
 
   if (!state) return <div className="flex h-screen items-center justify-center gap-3 text-muted-foreground"><ArrowLeftRight className="size-5" />{error || 'Opening your workspace…'}</div>;
   const session = state.session;
   const active = session && !['stopped', 'failed'].includes(session.status);
   const project = state.projects.find(p => p.id === selected) ?? state.projects.find(p => p.id === session?.project.id) ?? state.projects[0];
+  shownProject.current = project?.id;
   const current = project && session?.project.id === project.id;
   const snapshot = current && active ? session.project : project;
   const services = snapshot?.services ?? [];
@@ -177,22 +190,22 @@ export function App() {
           <div className="mt-6 grid grid-cols-3 overflow-hidden rounded-lg border bg-[var(--surface)]"><div className="px-4 py-3"><p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Session</p><p className="mt-1.5 flex items-center gap-2 text-sm font-medium capitalize"><Radio className={cn('size-3.5', running ? 'text-emerald-600' : 'text-slate-400')} />{project.draft ? 'Draft' : current ? session.status : 'Stopped'}</p></div><div className="border-x px-4 py-3"><p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Services running</p><p className="mono mt-1.5 text-sm">{current ? count : 0}<span className="text-muted-foreground"> / {services.filter(s => s.enabled && s.mode !== 'task').length}</span></p></div><div className="px-4 py-3"><p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Environment</p><p className="mt-1.5 flex items-center gap-2 text-sm"><Circle className="size-3 text-primary" />One project at a time</p></div></div>
         </section>
         {project.draft && <div className="mx-7 mb-4 rounded-lg border bg-[var(--surface)] px-4 py-3 text-xs text-muted-foreground">This project is a draft. Add at least one service in Config before starting it.</div>}
-        <Tabs value={view} onValueChange={value => setView(value as 'services' | 'terminal' | 'config' | 'install')} className="mx-7 mb-5 mt-1 flex min-h-0 flex-1 flex-col">
-          <TabsList className="w-fit shrink-0"><TabsTrigger value="services">Services</TabsTrigger><TabsTrigger value="terminal">Terminal</TabsTrigger>{project.install && <TabsTrigger value="install">Install</TabsTrigger>}<TabsTrigger value="config" className="gap-1.5"><FileCode2 className="size-3.5" />Config{configDirty && <span className="size-1.5 rounded-full bg-amber-500" aria-label="Unsaved changes" />}</TabsTrigger></TabsList>
+        <Tabs value={view} onValueChange={value => setView(value as View)} className="mx-7 mb-5 mt-1 flex min-h-0 flex-1 flex-col">
+          <TabsList className="w-fit shrink-0"><TabsTrigger value="services">Services</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger>{project.install && <TabsTrigger value="install">Install</TabsTrigger>}<TabsTrigger value="config" className="gap-1.5"><FileCode2 className="size-3.5" />Config{configDirty && <span className="size-1.5 rounded-full bg-amber-500" aria-label="Unsaved changes" />}</TabsTrigger></TabsList>
           <TabsContent value="services" className="mt-3 min-h-0 flex-1 overflow-auto">
         {snapshot?.error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"><strong>Check your configuration</strong><pre className="mt-2 whitespace-pre-wrap text-xs">{snapshot.error}</pre></div> : <section className="overflow-auto rounded-lg border bg-[var(--surface)]">
           <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-[var(--surface)] px-4 py-2.5"><h2 className="text-xs font-semibold">Services</h2>{missingServices ? <Button size="sm" variant="outline" disabled={busy || transitioning} onClick={() => run(() => window.devenv.start(project.id))}><Play />Start remaining</Button> : <span className="text-[10px] text-muted-foreground">Started in dependency order</span>}</div>
           <table className="w-full text-left text-xs"><thead className="bg-[var(--surface-hover)] text-[10px] font-medium uppercase tracking-wider text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Service / command</th><th className="px-2 py-2 font-medium">Port</th><th className="px-2 py-2 font-medium">Status</th><th className="w-28 px-2"><span className="sr-only">Actions</span></th></tr></thead><tbody>
             {services.map(service => {
               const serviceState = current ? session.services.find(s => s.name === service.name) : undefined;
-              return <tr key={service.name} className={cn('border-t hover:bg-[var(--surface-hover)]', !service.enabled && 'opacity-45')}><td className="px-4 py-2.5"><button className="max-w-full text-left" onClick={() => { setServiceFilter(service.name); setView('terminal'); }}><span className="flex items-center gap-2 font-medium"><Terminal className="size-3.5 text-muted-foreground" />{service.name}{service.mode === 'task' && <span className="font-normal text-muted-foreground">· task</span>}</span><span title={`${service.cwd}\n${service.command}`} className="mono mt-1 block max-w-[330px] truncate text-[10px] text-muted-foreground">{service.command}</span></button>{serviceState?.error && <p className="mt-1 max-w-[360px] break-words text-[10px] text-destructive">{serviceState.error}</p>}</td><td className="mono px-2 text-[11px] text-muted-foreground">{service.ports.join(', ') || '—'}</td><td className="px-2">{service.enabled ? <Status status={serviceState?.status ?? 'stopped'} /> : <span className="text-[11px] text-muted-foreground">Disabled</span>}</td><td className="px-2">{service.enabled && (() => { const status = serviceState?.status ?? 'stopped'; const disabled = busy || transitioning || ['starting', 'stopping'].includes(status); return running && ['running', 'ready'].includes(status) ? <Button size="sm" variant="ghost" className={stopButtonClass} aria-label={`Stop ${service.name}`} title={`Stop ${service.name} and services that depend on it`} disabled={disabled} onClick={() => run(() => window.devenv.stopService(project.id, service.name))}><Square />Stop</Button> : running && status === 'completed' ? <Button size="sm" variant="ghost" aria-label={`Run ${service.name} again`} disabled={disabled} onClick={() => run(() => window.devenv.restart(service.name))}><RefreshCw />Run again</Button> : <Button size="sm" variant="ghost" aria-label={`${status === 'failed' ? 'Retry' : 'Start'} ${service.name}`} title={active && !current ? `Switch to ${project.name} and start ${service.name}` : `Start ${service.name} and its dependencies`} disabled={disabled || !!project.error || !!project.draft} onClick={() => run(() => window.devenv.startService(project.id, service.name))}><Play />{status === 'failed' ? 'Retry' : 'Start'}</Button>; })()}</td></tr>;
+              return <tr key={service.name} className={cn('border-t hover:bg-[var(--surface-hover)]', !service.enabled && 'opacity-45')}><td className="px-4 py-2.5"><button className="max-w-full text-left" onClick={() => { setServiceFilter(service.name); setView('logs'); }}><span className="flex items-center gap-2 font-medium"><Terminal className="size-3.5 text-muted-foreground" />{service.name}{service.mode === 'task' && <span className="font-normal text-muted-foreground">· task</span>}</span><span title={`${service.cwd}\n${service.command}`} className="mono mt-1 block max-w-[330px] truncate text-[10px] text-muted-foreground">{service.command}</span></button>{serviceState?.error && <p className="mt-1 max-w-[360px] break-words text-[10px] text-destructive">{serviceState.error}</p>}</td><td className="mono px-2 text-[11px] text-muted-foreground">{service.ports.join(', ') || '—'}</td><td className="px-2">{service.enabled ? <Status status={serviceState?.status ?? 'stopped'} /> : <span className="text-[11px] text-muted-foreground">Disabled</span>}</td><td className="px-2">{service.enabled && (() => { const status = serviceState?.status ?? 'stopped'; const disabled = busy || transitioning || ['starting', 'stopping'].includes(status); return running && ['running', 'ready'].includes(status) ? <Button size="sm" variant="ghost" className={stopButtonClass} aria-label={`Stop ${service.name}`} title={`Stop ${service.name} and services that depend on it`} disabled={disabled} onClick={() => run(() => window.devenv.stopService(project.id, service.name))}><Square />Stop</Button> : running && status === 'completed' ? <Button size="sm" variant="ghost" aria-label={`Run ${service.name} again`} disabled={disabled} onClick={() => run(() => window.devenv.restart(service.name))}><RefreshCw />Run again</Button> : <Button size="sm" variant="ghost" aria-label={`${status === 'failed' ? 'Retry' : 'Start'} ${service.name}`} title={active && !current ? `Switch to ${project.name} and start ${service.name}` : `Start ${service.name} and its dependencies`} disabled={disabled || !!project.error || !!project.draft} onClick={() => run(() => window.devenv.startService(project.id, service.name))}><Play />{status === 'failed' ? 'Retry' : 'Start'}</Button>; })()}</td></tr>;
             })}
           </tbody></table>
         </section>}
           </TabsContent>
-          <TabsContent value="terminal" className="mt-3 flex min-h-0 flex-1 flex-col">
+          <TabsContent value="logs" className="mt-3 flex min-h-0 flex-1 flex-col">
         <section className="terminal-panel flex min-h-[130px] flex-1 flex-col overflow-hidden rounded-lg border border-[#404651] bg-[#282C34] text-[var(--terminal-foreground)]">
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/8 bg-[#303641] px-4 py-2.5"><div className="flex items-center gap-2"><Terminal className="size-3.5 text-[var(--terminal-accent)]" /><h2 className="text-xs font-medium">Console</h2><select aria-label="Filter logs by service" value={serviceFilter} onChange={e => setServiceFilter(e.target.value)} className="ml-2 rounded border border-white/10 bg-[#383E4A] px-2 py-1 text-[10px] text-[var(--terminal-foreground)]"><option value="">All services</option>{services.map(s => <option key={s.name}>{s.name}</option>)}</select></div><div className="flex items-center gap-3 text-[var(--terminal-foreground)]"><button title={following ? 'Pause logs' : 'Follow logs'} aria-label={following ? 'Pause logs' : 'Follow logs'} onClick={() => setFollowing(!following)}>{following ? <Pause className="size-3.5" /> : <ArrowDownToLine className="size-3.5" />}</button><button title="Copy visible logs" aria-label="Copy visible logs" onClick={() => { void navigator.clipboard.writeText(visibleLogs.map(e => clean(e.text)).join('')).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>{copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}</button><button disabled={!running} onClick={() => run(() => window.devenv.openTerminal())} className="flex items-center gap-1.5 text-[10px] disabled:opacity-30">Open in {terminalLabel(state.settings.terminal, state.hostPlatform)}<ExternalLink className="size-3" /></button></div></div>
+          <div className="flex shrink-0 items-center justify-between gap-4 border-b border-white/8 bg-[#303641] px-4 py-2"><div className="flex min-w-0 flex-1 items-center gap-2"><Logs className="size-3.5 shrink-0 text-[var(--terminal-accent)]" /><h2 className="shrink-0 text-xs font-medium">Console</h2>{/* "*" cannot be a service name, so it stands for every service. */}<Tabs value={serviceFilter || '*'} onValueChange={value => setServiceFilter(value === '*' ? '' : value)} className="ml-2 min-w-0"><TabsList aria-label="Filter logs by service" className="log-tabs flex h-auto max-w-full justify-start gap-0.5 overflow-x-auto rounded bg-transparent p-0"><TabsTrigger value="*" className={logTabClass}>All</TabsTrigger>{services.map(s => <TabsTrigger key={s.name} value={s.name} className={logTabClass}>{s.name}</TabsTrigger>)}</TabsList></Tabs></div><div className="flex shrink-0 items-center gap-3 text-[var(--terminal-foreground)]"><button title={following ? 'Pause logs' : 'Follow logs'} aria-label={following ? 'Pause logs' : 'Follow logs'} onClick={() => setFollowing(!following)}>{following ? <Pause className="size-3.5" /> : <ArrowDownToLine className="size-3.5" />}</button><button title="Copy visible logs" aria-label="Copy visible logs" onClick={() => { void navigator.clipboard.writeText(visibleLogs.map(e => clean(e.text)).join('')).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>{copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}</button><button disabled={!running} onClick={() => run(() => window.devenv.openTerminal())} className="flex items-center gap-1.5 text-[10px] disabled:opacity-30">Open in {terminalLabel(state.settings.terminal, state.hostPlatform)}<ExternalLink className="size-3" /></button></div></div>
           <div className="flex shrink-0 items-center gap-2 border-b border-white/5 px-4 py-1.5"><Search className="size-3 text-[#7F8A99]" /><input aria-label="Search logs" value={textFilter} onChange={e => setTextFilter(e.target.value)} placeholder="Filter output…" className="w-full bg-transparent text-[10px] text-[var(--terminal-foreground)] outline-none placeholder:text-[#7F8A99]" /></div>
           <div className="console mono min-h-0 flex-1 overflow-auto px-4 py-3 text-[10px] leading-[1.8]">
             {!current || !visibleLogs.length ? <div className="flex h-full min-h-10 items-center justify-center gap-2 text-[#7F8A99]"><span>›</span>{running ? 'Waiting for service output…' : 'Start a session to see your service output here.'}</div> : visibleLogs.map(entry => <div key={entry.seq} className="flex items-start gap-3"><span className="shrink-0 select-none text-[#7F8A99]">{entry.time.slice(11, 19)}</span><span className="w-16 shrink-0 truncate text-[var(--terminal-secondary)]" title={entry.service}>{entry.service === '_session' ? 'devenv' : entry.service}</span><span className={cn('min-w-0 whitespace-pre-wrap break-all', entry.stream === 'stderr' && 'text-[#e8aa91]', entry.stream === 'system' && 'text-[#7F8A99]')}>{clean(entry.text)}</span></div>)}<div ref={bottom} />
@@ -205,7 +218,8 @@ export function App() {
       </>}
       <footer className="flex h-8 shrink-0 items-center justify-between border-t px-7 text-[10px] text-muted-foreground"><span>Local commands. A shared routine.</span><span>{state.scanning ? 'Discovering projects…' : `${state.settings.roots.length} search folder${state.settings.roots.length === 1 ? '' : 's'}`}<span className="mx-2 opacity-30">|</span>{platformName(state.hostPlatform)}</span></footer>
     </main>
-    <CommandPalette state={state} open={paletteOpen} setOpen={setPaletteOpen} onProject={selectProject} onCreate={() => void createProject()} onAddFolder={() => run(() => window.devenv.addFolder())} onHelp={openHelp} onSettings={() => { setSettingsTab('general'); setSettings(true); }} />
+    {project && <HarnessTerminal key={project.id} project={project} state={state} open={terminalProject === project.id} onOpenChange={open => setTerminalProject(open ? project.id : undefined)} run={run} onSettings={() => { setSettingsTab('general'); setSettings(true); }} />}
+    <CommandPalette state={state} open={paletteOpen} setOpen={setPaletteOpen} onProject={selectProject} onCreate={() => void createProject(true)} onAdd={() => void createProject()} onAddFolder={() => run(() => window.devenv.addFolder())} onHelp={openHelp} onSettings={() => { setSettingsTab('general'); setSettings(true); }} />
     <Help context={helpContext} open={helpOpen} onOpenChange={setHelpOpen} />
     <ProjectSetup context={{ host: state.hostPlatform, target: state.projects.find(project => project.path === setupPath)?.executionTarget ?? { kind: 'native' } }} path={setupPath} onClose={() => setSetupPath(null)} />
     {/* Mark onboarding complete before creating: createProject may add a search folder, and saving stale settings afterwards would drop it. */}

@@ -19,8 +19,16 @@ export interface Session {
 export interface ProjectFolder { id: string; name: string; parentId: string | null }
 export type Appearance = 'light' | 'dark' | 'system';
 export type TerminalApp = 'terminal' | 'iterm' | 'ghostty' | 'powershell';
-export interface Settings { projectTargets?: Record<string, ExecutionTarget>; searchRoots?: SearchRoot[]; roots: string[]; exclusions: string[]; shell: string; releaseRepo: string; appearance: Appearance; terminal: TerminalApp; projectFolders: ProjectFolder[]; projectFolderAssignments: Record<string, string>; projectTreeOrder: Record<string, string[]>; sidebarPinned: boolean; onboardingCompleted: boolean }
+export type Harness = 'claude' | 'codex' | 'custom';
+export interface HarnessChoice { harness: Harness; harnessCommand: string }
+export interface Settings { projectTargets?: Record<string, ExecutionTarget>; searchRoots?: SearchRoot[]; roots: string[]; exclusions: string[]; shell: string; releaseRepo: string; appearance: Appearance; terminal: TerminalApp; harness: Harness; harnessCommand: string; projectHarnesses: Record<string, HarnessChoice>; projectFolders: ProjectFolder[]; projectFolderAssignments: Record<string, string>; projectTreeOrder: Record<string, string[]>; sidebarPinned: boolean; onboardingCompleted: boolean }
 export interface LogEntry { seq: number; time: string; service: string; stream: 'stdout' | 'stderr' | 'system'; text: string }
+// `run` identifies one launch of a project's harness; `offset` counts the characters it has written so far.
+export interface HarnessSnapshot { run: number; command: string; output: string; offset: number; running: boolean; exitCode?: number }
+export interface HarnessOutput { id: string; run: number; data: string; offset: number }
+export interface HarnessExit { id: string; run: number; exitCode: number }
+// Working while the harness keeps writing output, idle once it goes quiet and waits for the user.
+export interface HarnessStatus { run: number; command: string; state: 'working' | 'idle' | 'exited' }
 export interface ConfigDocument { path: string; text: string; revision: string }
 export interface ConfigValidation { valid: boolean; message?: string; line?: number; column?: number }
 export interface UpdateInfo {
@@ -28,17 +36,18 @@ export interface UpdateInfo {
   current: string; latest?: string; notes?: string; message?: string; progress?: number; checkedAt?: string;
 }
 export interface TerminalTheme { background: string; foreground: string; accent: string; secondary: string; source: string }
-export interface AppState { hostPlatform: Platform; projects: Project[]; settings: Settings; session: Session | null; installState: InstallState | null; installOutput: string; scanning: boolean; scanErrors: string[]; error?: string; update: UpdateInfo; theme: TerminalTheme; installedTerminals: TerminalApp[] }
+export interface AppState { hostPlatform: Platform; projects: Project[]; settings: Settings; session: Session | null; installState: InstallState | null; installOutput: string; scanning: boolean; scanErrors: string[]; error?: string; update: UpdateInfo; theme: TerminalTheme; installedTerminals: TerminalApp[]; harnesses: Record<string, HarnessStatus> }
 export interface DesktopAPI {
   setProjectTarget(id: string, target: ExecutionTarget): Promise<string>;
   wslDistributions(): Promise<Array<{ name: string; version: number }>>; wslDirectories(distribution: string, path?: string): Promise<{ path: string; directories: string[] }>; addWslFolder(distribution: string, path: string): Promise<void>;
-  state(): Promise<AppState>; scan(): Promise<void>; addFolder(): Promise<void>; createProject(): Promise<{ id: string; path: string } | null>;
+  state(): Promise<AppState>; scan(): Promise<void>; addFolder(): Promise<void>; createProject(agentGuide?: boolean): Promise<{ id: string; path: string } | null>;
   saveSettings(settings: Settings): Promise<void>;
   start(id: string): Promise<void>; stop(): Promise<void>; restart(name: string): Promise<void>;
   install(id: string, mode?: 'resume' | 'restart'): Promise<void>; cancelInstall(): Promise<void>; installInput(data: string): Promise<void>; installResize(cols: number, rows: number): Promise<void>;
   startService(id: string, name: string): Promise<void>; stopService(id: string, name: string): Promise<void>;
   logs(service?: string): Promise<LogEntry[]>; openTerminal(): Promise<void>;
   openConfigFinder(id: string): Promise<void>; openConfigTerminal(id: string): Promise<void>;
+  harnessOpen(id: string, cols: number, rows: number, restart?: boolean): Promise<HarnessSnapshot>; harnessInput(id: string, data: string): Promise<void>; harnessResize(id: string, cols: number, rows: number): Promise<void>; harnessClose(id: string): Promise<void>;
   readConfig(id: string): Promise<ConfigDocument>;
   validateConfig(id: string, text: string): Promise<ConfigValidation>;
   saveConfig(id: string, text: string, revision: string): Promise<ConfigDocument>;
@@ -46,4 +55,6 @@ export interface DesktopAPI {
   onState(callback: (state: AppState) => void): () => void;
   onLog(callback: (entry: LogEntry) => void): () => void;
   onInstallOutput(callback: (data: string) => void): () => void;
+  onHarnessOutput(callback: (output: HarnessOutput) => void): () => void;
+  onHarnessExit(callback: (exit: HarnessExit) => void): () => void;
 }

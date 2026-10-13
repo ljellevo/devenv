@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { appearanceOptions } from './appearance';
 import { TerminalPicker } from './terminals';
+import { HarnessPicker } from './harnesses';
 import type { AppState } from '../shared/types';
 
 export type SettingsTab = 'general' | 'workspace' | 'updates';
@@ -15,19 +16,21 @@ export function Settings({ state, open, setOpen, tab, setTab, run }: { state: Ap
   const [shell, setShell] = useState(state.settings.shell);
   const [repo, setRepo] = useState(state.settings.releaseRepo);
   const [exclusions, setExclusions] = useState(state.settings.exclusions.join(', '));
+  const [harnessDirty, setHarnessDirty] = useState(false);
   const [confirmInstall, setConfirmInstall] = useState(false);
   const update = state.update;
   const nextExclusions = exclusions.split(',').map(s => s.trim()).filter(Boolean);
   const exclusionsDirty = nextExclusions.join('\n') !== state.settings.exclusions.join('\n');
   // Pickers and folder changes save immediately; only typed fields can hold unsaved edits.
-  const dirty = shell !== state.settings.shell || exclusionsDirty || repo !== state.settings.releaseRepo;
+  const dirty = shell !== state.settings.shell || harnessDirty || exclusionsDirty || repo !== state.settings.releaseRepo;
   const [confirmClose, setConfirmClose] = useState(false);
   return <Dialog open={open} onOpenChange={value => { if (!value && dirty) setConfirmClose(true); else setOpen(value); }}><DialogContent className="max-h-[calc(100vh-3rem)]">
     <div><DialogTitle>Settings</DialogTitle><DialogDescription className="mt-2">How Devenv looks and runs, where it finds projects, and app updates.</DialogDescription></div>
     <Tabs value={tab} onValueChange={value => setTab(value as SettingsTab)}><TabsList className="w-full"><TabsTrigger value="general" className="flex-1">General</TabsTrigger><TabsTrigger value="workspace" className="flex-1">Workspace</TabsTrigger><TabsTrigger value="updates" className="flex-1">Updates {update.status === 'available' && '·'}</TabsTrigger></TabsList>
       <TabsContent value="general" className="space-y-5">
-        <section><h3 className="mb-3 font-medium">Appearance</h3><div className="inline-flex rounded-lg border bg-muted p-1" role="group" aria-label="Appearance">{appearanceOptions.map(({ value, label, icon: Icon }) => <Button key={value} size="sm" variant={state.settings.appearance === value ? "secondary" : "ghost"} aria-pressed={state.settings.appearance === value} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, appearance: value }))}><Icon />{label}</Button>)}</div><p className="mt-2 text-xs text-muted-foreground">System follows your system’s light or dark setting. The Terminal tab always uses its dark theme.</p></section>
+        <section><h3 className="mb-3 font-medium">Appearance</h3><div className="inline-flex rounded-lg border bg-muted p-1" role="group" aria-label="Appearance">{appearanceOptions.map(({ value, label, icon: Icon }) => <Button key={value} size="sm" variant={state.settings.appearance === value ? "secondary" : "ghost"} aria-pressed={state.settings.appearance === value} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, appearance: value }))}><Icon />{label}</Button>)}</div><p className="mt-2 text-xs text-muted-foreground">System follows your system’s light or dark setting. The Logs tab and the agent terminal always use their dark theme.</p></section>
         <section><h3 className="mb-3 font-medium">Terminal app</h3><TerminalPicker state={state} run={run} /><p className="mt-2 text-xs text-muted-foreground">Service logs and project folders open here.{state.settings.terminal === 'terminal' && state.hostPlatform !== 'windows' && ' Terminal opens one window per service.'}</p></section>
+        <section><h3 className="mb-3 font-medium">Coding agent</h3><HarnessPicker state={state} run={run} compact onDirtyChange={setHarnessDirty} /><p className="mt-2 text-xs text-muted-foreground">The agent terminal runs this harness in the project’s config folder. A project can choose its own harness there.</p></section>
         <label className="block space-y-2"><span className="font-medium">Shell</span><div className="flex gap-2"><Input value={shell} onChange={e => setShell(e.target.value)} /><Button variant="outline" disabled={shell === state.settings.shell} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, shell }))}>Save</Button></div><span className="block text-xs text-muted-foreground">{state.hostPlatform === 'windows' ? 'Use pwsh.exe or powershell.exe; your PowerShell profile supplies PATH. WSL projects use their distribution’s shell.' : 'Your login environment supplies PATH.'} Stop the active session before changing shells.</span></label>
         <section><div className="flex items-center justify-between gap-3"><div><h3 className="font-medium">Tutorial</h3><p className="mt-1 text-xs text-muted-foreground">{state.settings.onboardingCompleted ? 'Show the introduction and folder setup again.' : 'The tutorial will show the next time Devenv launches.'}</p></div><Button size="sm" variant="outline" className="shrink-0" title="Show the introduction and folder setup again the next time Devenv launches" disabled={!state.settings.onboardingCompleted} onClick={() => run(() => window.devenv.saveSettings({ ...state.settings, onboardingCompleted: false }))}><RotateCcw />Reset tutorial</Button></div></section>
       </TabsContent>

@@ -21,21 +21,34 @@ test.beforeEach(async ({ page }) => {
     if (new URLSearchParams(location.search).has('installing')) { const cwd = '/Users/developer/code/dealroom/resources'; projects[1].install = { cwd, steps: [{ id: 'dependencies', command: 'npm install', cwd, env: {}, timeout: 1800, interactive: false }, { id: 'database', command: 'npm run db:setup', cwd, env: {}, timeout: 600, interactive: true, notes: 'Creates the local Postgres database.' }, { id: 'seed', command: 'npm run db:seed', cwd, env: {}, timeout: 600, interactive: false }], recipeHash: 'test' }; projects[1].installed = false; }
     const defaultSettings = { roots: ['/Users/developer/code'], exclusions: [], shell: '/bin/zsh', releaseRepo: 'ljellevo/devenv', appearance: 'dark', terminal: 'ghostty', projectFolders: [], projectFolderAssignments: {}, projectTreeOrder: {}, sidebarPinned: false, onboardingCompleted: true };
     if (new URLSearchParams(location.search).has('onboarding')) Object.assign(defaultSettings, { roots: [], appearance: 'system', terminal: 'terminal', onboardingCompleted: false });
-    const state: any = { hostPlatform: new URLSearchParams(location.search).get('platform') || 'macos', projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, installedTerminals: ['terminal', 'ghostty'] };
+    const state: any = { hostPlatform: new URLSearchParams(location.search).get('platform') || 'macos', projects, settings: JSON.parse(localStorage.getItem('devenv-test-settings') || JSON.stringify(defaultSettings)), session: null, scanning: false, scanErrors: [], update: { status: 'idle', current: '0.1.0' }, installedTerminals: ['terminal', 'ghostty'], harnesses: {} };
     if (new URLSearchParams(location.search).has('installing')) Object.assign(state, { installOutput: '', installState: { projectId: 'dealroom', status: 'running', stepId: 'database', stepIndex: 1, completedStepIds: ['dependencies'] } });
-    let listener = (_: any) => {}, logListener = (_: any) => {};
+    let listener = (_: any) => {}, logListener = (_: any) => {}, harnessListener = (_: any) => {}, harnessExitListener = (_: any) => {};
+    const harnessRuns: Record<string, { run: number; command: string; running: boolean }> = {};
     (window as any).calls = [];
     if (new URLSearchParams(location.search).has('wsl')) projects.forEach(project => project.executionTarget = { kind: 'wsl', distribution: 'Ubuntu-24.04' });
+    const harnessState = (id: string, value: string) => { state.harnesses = { ...state.harnesses, [id]: { run: harnessRuns[id].run, command: harnessRuns[id].command, state: value } }; listener(structuredClone(state)); };
     window.devenv = {
       setProjectTarget: async id => id, wslDistributions: async () => [], wslDirectories: async () => ({ path: '/', directories: [] }), addWslFolder: async () => {},
       state: async () => structuredClone(state), onState: callback => { listener = callback; return () => {}; }, onLog: callback => { logListener = callback; return () => {}; }, onInstallOutput: () => () => {},
-      scan: async () => {}, addFolder: async () => { state.settings = { ...state.settings, roots: [...state.settings.roots, '/Users/developer/projects'] }; listener(structuredClone(state)); }, createProject: async () => { const created = { id: 'new-project', path: '/Users/developer/code/New Project/devenv.toml', name: 'New Project', services: [], draft: true }; projects.push(created); state.projects = projects; listener(structuredClone(state)); return { id: created.id, path: created.path }; },
+      scan: async () => {}, addFolder: async () => { state.settings = { ...state.settings, roots: [...state.settings.roots, '/Users/developer/projects'] }; listener(structuredClone(state)); }, createProject: async agentGuide => { if (agentGuide) (window as any).calls.push(['create', agentGuide]); const created = { id: 'new-project', path: '/Users/developer/code/New Project/devenv.toml', name: 'New Project', services: [], draft: true }; projects.push(created); state.projects = projects; listener(structuredClone(state)); return { id: created.id, path: created.path }; },
       start: async id => { (window as any).calls.push(['start', id]); const project = projects.find(p => p.id === id)!; state.session = { id: 'session-' + id, project, status: 'running', startedAt: new Date().toISOString(), services: project.services.map((s: any) => ({ name: s.name, status: 'ready', pid: 123 })) }; listener(structuredClone(state)); setTimeout(() => logListener({ seq: 1, time: new Date().toISOString(), service: 'api', stream: 'stdout', text: 'API listening on http://localhost:3100\n' }), 100); },
       install: async (id, mode) => { (window as any).calls.push(['install', id, mode]); }, cancelInstall: async () => {}, installInput: async () => {}, installResize: async () => {},
       stop: async () => { (window as any).calls.push(['stop']); state.session.status = 'stopped'; state.session.services.forEach((s: any) => s.status = 'stopped'); listener(structuredClone(state)); },
       startService: async (id, name) => { (window as any).calls.push(['start-service', id, name]); }, stopService: async (id, name) => { (window as any).calls.push(['stop-service', id, name]); },
       logs: async () => [], restart: async () => {}, openTerminal: async () => { (window as any).calls.push(['terminal']); },
       openConfigFinder: async id => { (window as any).calls.push(['finder', id]); }, openConfigTerminal: async id => { (window as any).calls.push(['config-terminal', id]); },
+      harnessOpen: async (id, cols, rows, restart) => {
+        const choice = state.settings.projectHarnesses?.[id] ?? state.settings;
+        const command = choice.harness === 'custom' ? choice.harnessCommand : choice.harness === 'codex' ? 'codex' : 'claude';
+        if (!harnessRuns[id]?.running || restart) { harnessRuns[id] = { run: (harnessRuns[id]?.run ?? 0) + 1, command, running: true }; (window as any).calls.push(['harness', id, command]); harnessState(id, 'idle'); }
+        const output = `${harnessRuns[id].command} ready in ${id}\r\n`;
+        return { ...harnessRuns[id], output, offset: output.length };
+      },
+      // Enter makes the fake harness work for a moment before it goes idle again.
+      harnessInput: async (id, data) => { const { run } = harnessRuns[id]; harnessListener({ id, run, data: `echo:${data}`, offset: 1000 }); if (data === '\r') { harnessState(id, 'working'); setTimeout(() => { if (harnessRuns[id].run === run && harnessRuns[id].running) harnessState(id, 'idle'); }, 1200); } }, harnessResize: async () => {},
+      harnessClose: async id => { const { run } = harnessRuns[id]; harnessRuns[id].running = false; harnessExitListener({ id, run, exitCode: 0 }); harnessState(id, 'exited'); },
+      onHarnessOutput: callback => { harnessListener = callback; return () => {}; }, onHarnessExit: callback => { harnessExitListener = callback; return () => {}; },
       readConfig: async id => ({ path: projects.find(p => p.id === id)!.path, text: 'version = 1\nname = "Intivo"\n\n[services.api]\ncwd = "."\ncommand = "npm run dev"\n', revision: '0'.repeat(64) }),
       validateConfig: async () => ({ valid: true }), saveConfig: async (id, text) => ({ path: projects.find(p => p.id === id)!.path, text, revision: '1'.repeat(64) }),
       saveSettings: async settings => { state.settings = settings; localStorage.setItem('devenv-test-settings', JSON.stringify(settings)); listener(structuredClone(state)); },
@@ -62,7 +75,7 @@ test('shows Reinstall project in the Run project action menu', async ({ page }) 
 
 test('Run project switches to the Services tab', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('tab', { name: 'Terminal' }).click();
+  await page.getByRole('tab', { name: 'Logs' }).click();
   await page.getByRole('button', { name: 'Run project' }).click();
   await expect(page.getByRole('tab', { name: 'Services' })).toHaveAttribute('aria-selected', 'true');
   expect((await page.evaluate(() => (window as any).calls))[0][0]).toBe('start');
@@ -77,8 +90,16 @@ test('start, view logs, open the terminal app, switch, and stop through the shar
   await expect(page.getByRole('button', { name: 'Project actions' })).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Projects' }).getByText('Running · 6 services')).toBeVisible();
   // The hover sidebar covers the tabs until it finishes closing; clicking sooner re-opens it.
-  await expect(page.locator('aside')).toHaveClass(/-translate-x-full/);
-  await page.getByRole('tab', { name: 'Terminal' }).click();
+  await expect(page.locator('aside').first()).toHaveClass(/-translate-x-full/);
+  await page.getByRole('tab', { name: 'Logs' }).click();
+  await expect(page.getByText('API listening on http://localhost:3100')).toBeVisible();
+  // Each service has a tab where the service dropdown used to be.
+  const filters = page.getByRole('tablist', { name: 'Filter logs by service' });
+  await expect(filters.getByRole('tab')).toHaveText(['All', 'postgres', 'documents', 'api', 'web', 'admin', 'home']);
+  await expect(filters.getByRole('tab', { name: 'All' })).toHaveAttribute('aria-selected', 'true');
+  await filters.getByRole('tab', { name: 'web' }).click();
+  await expect(page.getByText('API listening on http://localhost:3100')).toBeHidden();
+  await filters.getByRole('tab', { name: 'api' }).click();
   await expect(page.getByText('API listening on http://localhost:3100')).toBeVisible();
   await page.locator('.terminal-panel').getByRole('button', { name: 'Open in Ghostty' }).click();
   await page.screenshot({ path: 'test-results/workspace.png' });
@@ -87,6 +108,145 @@ test('start, view logs, open the terminal app, switch, and stop through the shar
   await page.getByRole('button', { name: 'Run project' }).click();
   await page.getByRole('button', { name: 'Stop project' }).click();
   expect(await page.evaluate(() => (window as any).calls)).toEqual([['start', 'intivo'], ['terminal'], ['start', 'dealroom'], ['stop']]);
+});
+
+test('the agent terminal slides in as a sheet, keeps running when minimized, and shows working or idle', async ({ page }) => {
+  await page.goto('/');
+  const terminal = page.getByLabel('Coding agent terminal');
+  const sheet = page.getByRole('complementary', { name: 'Claude Code terminal' });
+  const pill = page.getByRole('button', { name: /^Claude Code/ });
+  const calls = () => page.evaluate(() => (window as any).calls);
+  // It is no longer a tab, and nothing launches until the sheet is opened.
+  await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText(['Services', 'Logs', 'Config']);
+  await expect(pill).toHaveText('Claude Code');
+  await expect(terminal).toBeHidden();
+  expect(await calls()).toEqual([]);
+  await pill.click();
+  await expect(sheet).toBeInViewport();
+  await expect(pill).toBeHidden();
+  await expect(terminal).toContainText('claude ready in intivo');
+  await expect(sheet.getByText('Idle')).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
+  // A click beside the sheet minimizes it and still reaches what was clicked.
+  await page.getByRole('tab', { name: 'Logs' }).click();
+  await expect(page.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
+  await expect(sheet).not.toBeInViewport();
+  await pill.click();
+  await expect(sheet).toBeInViewport();
+  await terminal.click();
+  await page.keyboard.type('hi');
+  await expect(terminal).toContainText('echo:hecho:i');
+  await page.keyboard.press('Enter');
+  await expect(sheet.getByText('Working')).toBeVisible();
+  // Minimizing hides the sheet but not the session; the pill keeps showing its activity.
+  await sheet.getByRole('button', { name: 'Minimize' }).click();
+  await expect(sheet).not.toBeInViewport();
+  await expect(pill).toHaveText('Claude CodeWorking');
+  await expect(pill).toHaveText('Claude CodeIdle');
+  await pill.click();
+  await expect(sheet).toBeInViewport();
+  await expect(terminal).toContainText('echo:hecho:i');
+  expect(await calls()).toEqual([['harness', 'intivo', 'claude']]);
+});
+
+test('Space on the selected project opens the agent terminal', async ({ page }) => {
+  await page.goto('/');
+  const terminal = page.getByLabel('Coding agent terminal');
+  const sheet = page.locator('aside').filter({ has: terminal });
+  await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
+  // Text fields and other controls keep the key.
+  await page.getByRole('tab', { name: 'Logs' }).click();
+  await page.getByLabel('Search logs').fill('a b');
+  await page.getByRole('tab', { name: 'Logs' }).press('Space');
+  await expect(page.getByLabel('Search logs')).toHaveValue('a b');
+  await expect(sheet).not.toBeInViewport();
+  // Space on another project selects it, as before; on the selected project it opens the sheet.
+  await page.mouse.move(2, 100);
+  await page.getByRole('navigation', { name: 'Projects' }).getByRole('button', { name: /Dealroom/ }).press('Space');
+  await expect(page.getByRole('heading', { name: 'Dealroom', exact: true })).toBeVisible();
+  await expect(sheet).not.toBeInViewport();
+  await page.getByRole('navigation', { name: 'Projects' }).getByRole('button', { name: /Dealroom/ }).press('Space');
+  await expect(sheet).toBeInViewport();
+  await expect(terminal).toContainText('claude ready in dealroom');
+  // In the terminal, Space is typed like any other key.
+  await terminal.click();
+  await page.keyboard.press('Space');
+  await expect(terminal).toContainText('echo: ');
+  await sheet.getByRole('button', { name: 'Minimize' }).click();
+  await expect(sheet).not.toBeInViewport();
+  await page.mouse.move(700, 600);
+  await page.locator('body').press('Space');
+  await expect(sheet).toBeInViewport();
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([['harness', 'dealroom', 'claude']]);
+});
+
+test('a project can override the harness from Settings', async ({ page }) => {
+  await page.goto('/');
+  const terminal = page.getByLabel('Coding agent terminal');
+  const sheet = page.locator('aside').filter({ has: page.getByLabel('Coding agent terminal') });
+  await page.getByRole('button', { name: /^Claude Code/ }).click();
+  await expect(terminal).toContainText('claude ready in intivo');
+  // A project override leaves the running harness alone until it is restarted.
+  await sheet.getByLabel('Harness for this project').selectOption('codex');
+  await expect(sheet.getByRole('heading', { name: 'claude', exact: true })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Restart with Codex' }).click();
+  await expect(terminal).toContainText('codex ready in intivo');
+  await expect(sheet.getByRole('heading', { name: 'Codex' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Stop', exact: true }).click();
+  await expect(sheet.getByText('Exited')).toBeVisible();
+  await expect(terminal).toContainText('[devenv] codex exited.');
+  // Custom asks for the command, which then joins the menu.
+  const menu = sheet.getByLabel('Harness for this project');
+  await expect(menu.getByRole('option')).toHaveText(['Default · Claude Code', 'Claude Code', 'Codex', 'Custom command…']);
+  await menu.selectOption('Custom command…');
+  const prompt = page.getByRole('dialog', { name: 'Custom harness' });
+  await expect(prompt.getByRole('button', { name: 'Use command' })).toBeDisabled();
+  await prompt.getByRole('button', { name: 'Cancel' }).click();
+  await expect(menu).toHaveValue('codex');
+  await menu.selectOption('Custom command…');
+  await prompt.getByRole('textbox', { name: 'Harness command' }).fill(' aider --model sonnet ');
+  await prompt.getByRole('textbox', { name: 'Harness command' }).press('Enter');
+  await expect(prompt).toBeHidden();
+  await expect(menu.getByRole('option')).toHaveText(['Default · Claude Code', 'Claude Code', 'Codex', 'aider --model sonnet', 'Custom command…']);
+  await expect(menu).toHaveValue('custom:aider --model sonnet');
+  await sheet.getByRole('button', { name: 'Restart with aider' }).click();
+  await expect(terminal).toContainText('aider --model sonnet ready in intivo');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ projectHarnesses: { intivo: { harness: 'custom', harnessCommand: 'aider --model sonnet' } } });
+  // Choosing another project minimizes the sheet instead of launching that project's harness.
+  await sheet.getByRole('button', { name: 'Minimize' }).click();
+  await page.mouse.move(2, 100);
+  await page.getByRole('navigation', { name: 'Projects' }).getByRole('button', { name: /Dealroom/ }).click();
+  await expect(page.locator('aside').first()).toHaveClass(/-translate-x-full/);
+  await expect(sheet).not.toBeInViewport();
+  await page.getByRole('button', { name: /^Claude Code/ }).click();
+  await expect(menu).toHaveValue('default');
+  await expect(terminal).toContainText('claude ready in dealroom');
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([['harness', 'intivo', 'claude'], ['harness', 'intivo', 'codex'], ['harness', 'intivo', 'aider --model sonnet'], ['harness', 'dealroom', 'claude']]);
+  // Another project can pick the custom harness; once no project uses it, it leaves the menu. Claude Code and Codex stay.
+  await menu.selectOption('aider --model sonnet');
+  await expect(sheet.getByRole('button', { name: 'Restart with aider' })).toBeVisible();
+  await menu.selectOption('Codex');
+  await expect(menu.getByRole('option')).toHaveText(['Default · Claude Code', 'Claude Code', 'Codex', 'aider --model sonnet', 'Custom command…']);
+  await sheet.getByRole('button', { name: 'Minimize' }).click();
+  await page.mouse.move(2, 100);
+  await page.getByRole('navigation', { name: 'Projects' }).getByRole('button', { name: /Intivo/ }).click();
+  await expect(page.locator('aside').first()).toHaveClass(/-translate-x-full/);
+  await page.getByRole('button', { name: /^aider/ }).click();
+  await menu.selectOption('Default · Claude Code');
+  await expect(menu.getByRole('option')).toHaveText(['Default · Claude Code', 'Claude Code', 'Codex', 'Custom command…']);
+});
+
+test('Settings chooses the default harness', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.move(2, 100); await page.getByRole('button', { name: /Settings/ }).click();
+  const picker = page.getByRole('group', { name: 'Coding agent' });
+  await expect(picker.getByRole('button', { name: 'Claude Code' })).toHaveAttribute('aria-pressed', 'true');
+  await picker.getByRole('button', { name: 'Codex' }).click();
+  await expect(picker.getByRole('button', { name: 'Codex' })).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('aside').first()).toHaveClass(/-translate-x-full/);
+  await page.getByRole('button', { name: /^Codex/ }).click();
+  await expect(page.getByLabel('Coding agent terminal')).toContainText('codex ready in intivo');
 });
 
 test('the project header opens the config folder in Finder or the chosen terminal app', async ({ page }) => {
@@ -199,6 +359,20 @@ test('command menu opens from the header and shortcut, and Help is available', a
   await expect(page.getByRole('dialog', { name: 'Help' }).getByRole('heading', { name: 'Run projects and services' })).toBeVisible();
 });
 
+test('Create project in the command menu makes a new project with an agent guide and no setup prompt', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Project actions' }).click();
+  await expect(page.getByRole('menuitem')).toHaveText(['Reinstall project']);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.getByRole('option', { name: 'Create project' }).click();
+  await expect(page.getByRole('heading', { name: 'New Project', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Config' })).toHaveAttribute('data-state', 'active');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([['create', true]]);
+});
+
 test('adding a project opens a copyable setup prompt and its Config tab', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Search projects and commands' }).click();
@@ -230,6 +404,14 @@ test('first launch walks through the tutorial and asks for a projects folder', a
   await expect(terminals.getByRole('button', { name: /iTerm2/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(terminals.getByRole('button', { name: 'Terminal' })).toHaveAttribute('aria-pressed', 'false');
   await tutorial.getByRole('button', { name: 'Next' }).click();
+  await expect(tutorial.getByRole('heading', { name: 'Which coding agent do you use?' })).toBeVisible();
+  const agents = tutorial.getByRole('group', { name: 'Coding agent' });
+  await expect(agents.getByRole('button', { name: 'Claude Code' })).toHaveAttribute('aria-pressed', 'true');
+  await agents.getByRole('button', { name: 'Custom' }).click();
+  await tutorial.getByRole('textbox', { name: 'Custom harness command' }).fill('gemini --yolo');
+  await tutorial.getByRole('button', { name: 'Save' }).click();
+  await expect(tutorial.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByRole('heading', { name: 'Run, watch, and switch' })).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByRole('heading', { name: 'One small file per project' })).toBeVisible();
@@ -251,7 +433,7 @@ test('first launch walks through the tutorial and asks for a projects folder', a
   await expect(tutorial.getByText(/that project’s own folder/)).toBeVisible();
   await tutorial.getByRole('button', { name: 'Finish' }).click();
   await expect(tutorial).toBeHidden();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: ['/Users/developer/projects'], appearance: 'light', terminal: 'iterm', onboardingCompleted: true });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('devenv-test-settings')!))).toMatchObject({ roots: ['/Users/developer/projects'], appearance: 'light', terminal: 'iterm', harness: 'custom', harnessCommand: 'gemini --yolo', onboardingCompleted: true });
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Your projects, in one place.' })).toBeVisible();
   await expect(page.getByRole('dialog')).toBeHidden();
@@ -267,7 +449,7 @@ test('the tutorial can be skipped without choosing a folder', async ({ page }) =
 test('the last tutorial step adds a project, shows its setup prompt, and closes', async ({ page }) => {
   await page.goto('/?onboarding&empty');
   const tutorial = page.getByRole('dialog');
-  for (let i = 0; i < 5; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
+  for (let i = 0; i < 6; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
   await tutorial.getByRole('button', { name: 'Skip for now' }).click();
   await tutorial.getByRole('button', { name: 'Add a project' }).click();
   await expect(page.getByRole('dialog', { name: 'Finish your project configuration' })).toBeVisible();
@@ -303,7 +485,7 @@ test('resetting the tutorial in Settings shows it on the next launch', async ({ 
   await page.reload();
   const tutorial = page.getByRole('dialog');
   await expect(tutorial.getByRole('heading', { name: 'Welcome to Devenv' })).toBeVisible();
-  for (let i = 0; i < 5; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
+  for (let i = 0; i < 6; i++) await tutorial.getByRole('button', { name: 'Next' }).click();
   await expect(tutorial.getByText('/Users/developer/code')).toBeVisible();
   await tutorial.getByRole('button', { name: 'Next' }).click();
   await tutorial.getByRole('button', { name: 'Finish' }).click();
