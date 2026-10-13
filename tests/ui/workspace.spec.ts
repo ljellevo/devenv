@@ -172,6 +172,11 @@ test('Space on the selected project opens the agent terminal', async ({ page }) 
   await terminal.click();
   await page.keyboard.press('Space');
   await expect(terminal).toContainText('echo: ');
+  // Shift+Enter reaches the agent as a new line instead of sending the message, and ⌘ edits the line.
+  await page.evaluate(() => { const { harnessInput } = window.devenv; (window as any).typed = []; window.devenv.harnessInput = (id, data) => { (window as any).typed.push(data); return harnessInput(id, data); }; });
+  for (const key of ['Shift+Enter', 'Meta+Backspace', 'Meta+ArrowLeft', 'Meta+ArrowRight', 'Backspace']) await page.keyboard.press(key);
+  await expect.poll(() => page.evaluate(() => (window as any).typed)).toEqual(['\x1b\r', '\x15', '\x01', '\x05', '\x7f']);
+  await expect(sheet.getByText('Idle')).toBeVisible();
   await sheet.getByRole('button', { name: 'Minimize' }).click();
   await expect(sheet).not.toBeInViewport();
   await page.mouse.move(700, 600);

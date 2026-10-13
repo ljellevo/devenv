@@ -1,4 +1,5 @@
 import type { Harness, HarnessChoice, Settings } from './types';
+import type { Platform } from './platform';
 export const harnesses: { value: Harness; label: string; command: string }[] = [
   { value: 'claude', label: 'Claude Code', command: 'claude' },
   { value: 'codex', label: 'Codex', command: 'codex' },
@@ -15,4 +16,14 @@ export const projectHarness = (settings: Partial<Settings>, projectId: string): 
 export const customHarnesses = (settings: Partial<Settings>, projectIds: string[]): string[] => {
   const choices: Array<HarnessSettings | undefined> = [settings, ...projectIds.map(id => settings.projectHarnesses?.[id])];
   return [...new Set(choices.filter(choice => choice?.harness === 'custom').map(harnessCommand).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+};
+const lineKeys: Record<string, string> = { Backspace: '\x15', Delete: '\x0b', ArrowLeft: '\x01', ArrowRight: '\x05' };
+/**
+ * What the harness receives for a chord xterm would send without its modifier or not at all. Shift+Enter becomes Alt+Enter,
+ * which agents read as a new line, and the macOS ⌘ line keys become the Ctrl keys a prompt edits its line with.
+ */
+export const harnessKeys = (event: { key: string; shiftKey: boolean; metaKey: boolean; ctrlKey: boolean; altKey: boolean }, host: Platform): string | undefined => {
+  if (event.ctrlKey || event.altKey) return undefined;
+  if (event.key === 'Enter') return event.shiftKey && !event.metaKey ? '\x1b\r' : undefined;
+  return host === 'macos' && event.metaKey && !event.shiftKey ? lineKeys[event.key] : undefined;
 };

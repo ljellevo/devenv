@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn, shortPath } from '@/lib/utils';
-import { customHarnesses, harnesses, harnessCommand, harnessLabel, projectHarness } from '../shared/harnesses';
+import { customHarnesses, harnesses, harnessCommand, harnessKeys, harnessLabel, projectHarness } from '../shared/harnesses';
 import type { AppState, Harness, HarnessExit, HarnessOutput, HarnessStatus, Project } from '../shared/types';
 
 const exitNotice = (command: string, code?: number) => `\r\n\x1b[90m[devenv] ${command.split(/\s+/)[0]} exited${code ? ` with code ${code}` : ''}.${code === 127 ? ' Is it installed and on your PATH?' : ''} Choose Restart to run it again.\x1b[0m\r\n`;
@@ -94,6 +94,13 @@ export function HarnessTerminal({ project, state, open, onOpenChange, run, onSet
       }).catch(cause => { if (!disposed && attempt === attempts) setError((cause instanceof Error ? cause.message : String(cause)).replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '')); });
     };
     const input = terminal.onData(data => { void window.devenv.harnessInput(project.id, data).catch(() => {}); });
+    // xterm sends Shift+Enter as Enter and has nothing for the ⌘ line keys. The key is cancelled so it is not also typed.
+    terminal.attachCustomKeyEventHandler(event => {
+      const keys = harnessKeys(event, state.hostPlatform);
+      if (keys === undefined) return true;
+      if (event.type === 'keydown') { event.preventDefault(); terminal.input(keys); }
+      return false;
+    });
     const observer = new ResizeObserver(() => { if (activeRef.current) resize(); });
     observer.observe(host.current);
     launch.current(false);

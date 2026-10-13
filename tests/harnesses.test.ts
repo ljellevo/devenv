@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { customHarnesses, harnessCommand, harnessLabel, projectHarness } from '../src/shared/harnesses';
+import { customHarnesses, harnessCommand, harnessKeys, harnessLabel, projectHarness } from '../src/shared/harnesses';
 import type { Settings } from '../src/shared/types';
 
 const settings = (value: Partial<Settings>) => value;
@@ -20,4 +20,19 @@ it('lists a custom command only while Settings or a known project uses it', () =
   expect(customHarnesses(settings({ harness: 'custom', harnessCommand: 'amp', projectHarnesses }), ['a'])).toEqual(['amp', 'gemini']);
   expect(customHarnesses(settings({ harness: 'claude', harnessCommand: '', projectHarnesses: { d: projectHarnesses.d } }), ['d'])).toEqual([]);
   expect(customHarnesses({}, ['a'])).toEqual([]);
+});
+
+it('translates the chords a terminal cannot send on its own', () => {
+  const chord = (key: string, held: Partial<Record<'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey', boolean>> = {}) => ({ key, shiftKey: false, metaKey: false, ctrlKey: false, altKey: false, ...held });
+  // Shift+Enter is a new line on every platform; Enter and Alt+Enter are left to the terminal.
+  for (const host of ['macos', 'linux', 'windows'] as const) expect(harnessKeys(chord('Enter', { shiftKey: true }), host)).toBe('\x1b\r');
+  expect(harnessKeys(chord('Enter'), 'macos')).toBeUndefined();
+  expect(harnessKeys(chord('Enter', { altKey: true }), 'macos')).toBeUndefined();
+  expect(harnessKeys(chord('Enter', { shiftKey: true, ctrlKey: true }), 'macos')).toBeUndefined();
+  // ⌘ edits the line on macOS only, where no other key sends it.
+  expect(['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight'].map(key => harnessKeys(chord(key, { metaKey: true }), 'macos'))).toEqual(['\x15', '\x0b', '\x01', '\x05']);
+  expect(harnessKeys(chord('Backspace', { metaKey: true }), 'linux')).toBeUndefined();
+  expect(harnessKeys(chord('Backspace'), 'macos')).toBeUndefined();
+  expect(harnessKeys(chord('Backspace', { metaKey: true, altKey: true }), 'macos')).toBeUndefined();
+  expect(harnessKeys(chord('k', { metaKey: true }), 'macos')).toBeUndefined();
 });
