@@ -198,7 +198,7 @@ test('a project can override the harness from Settings', async ({ page }) => {
   await expect(terminal).toContainText('codex ready in intivo');
   await expect(sheet.getByRole('heading', { name: 'Codex' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Stop', exact: true }).click();
-  await expect(sheet.getByText('Exited')).toBeVisible();
+  await expect(sheet.getByText('Exited', { exact: true })).toBeVisible();
   await expect(terminal).toContainText('[devenv] codex exited.');
   // Custom asks for the command, which then joins the menu.
   const menu = sheet.getByLabel('Harness for this project');
