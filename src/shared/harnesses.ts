@@ -27,3 +27,13 @@ export const harnessKeys = (event: { key: string; shiftKey: boolean; metaKey: bo
   if (event.key === 'Enter') return event.shiftKey && !event.metaKey ? '\x1b\r' : undefined;
   return host === 'macos' && event.metaKey && !event.shiftKey ? lineKeys[event.key] : undefined;
 };
+/**
+ * A project's agent terminals are tabs numbered from 1. The first tab's harness is keyed by the project id alone, so a
+ * single tab works as before; later tabs append their number.
+ */
+export const harnessKey = (projectId: string, tab: number) => tab === 1 ? projectId : `${projectId}:${tab}`;
+export const harnessProject = (key: string) => key.replace(/:\d+$/, '');
+/** The tab a harness key belongs to in the given project, or undefined when it belongs to another project. */
+export const harnessTab = (key: string, projectId: string) => key === projectId ? 1 : key.startsWith(`${projectId}:`) && /^\d+$/.test(key.slice(projectId.length + 1)) ? Number(key.slice(projectId.length + 1)) : undefined;
+/** ⌘T opens a new tab on macOS. Elsewhere Ctrl+T stays with the terminal, where it transposes characters, so the tab takes Ctrl+Shift+T. */
+export const newTabShortcut = (event: { key: string; shiftKey: boolean; metaKey: boolean; ctrlKey: boolean; altKey: boolean }, host: Platform) => event.key.toLowerCase() === 't' && !event.altKey && (host === 'macos' ? event.metaKey && !event.ctrlKey && !event.shiftKey : event.ctrlKey && event.shiftKey && !event.metaKey);

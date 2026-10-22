@@ -51,3 +51,15 @@ it('reports the exit and ignores events from an earlier launch', () => {
   activity.event(output(9));
   expect(statuses.other).toBeUndefined();
 });
+
+it('forgets a closed tab and ignores its late output', () => {
+  activity.opened('p', snapshot(1));
+  const before = changes;
+  activity.forget('p');
+  expect(statuses.p).toBeUndefined();
+  expect(changes).toBe(before + 1);
+  activity.event(output(1));
+  expect(statuses.p).toBeUndefined();
+  activity.forget('p');
+  expect(changes).toBe(before + 1);
+});

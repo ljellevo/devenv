@@ -47,7 +47,7 @@ export interface DesktopAPI {
   startService(id: string, name: string): Promise<void>; stopService(id: string, name: string): Promise<void>;
   logs(service?: string): Promise<LogEntry[]>; openTerminal(): Promise<void>;
   openConfigFinder(id: string): Promise<void>; openConfigTerminal(id: string): Promise<void>;
-  harnessOpen(id: string, cols: number, rows: number, restart?: boolean): Promise<HarnessSnapshot>; harnessInput(id: string, data: string): Promise<void>; harnessResize(id: string, cols: number, rows: number): Promise<void>; harnessClose(id: string): Promise<void>;
+  harnessOpen(id: string, cols: number, rows: number, restart?: boolean): Promise<HarnessSnapshot>; harnessInput(id: string, data: string): Promise<void>; harnessResize(id: string, cols: number, rows: number): Promise<void>; harnessClose(id: string, forget?: boolean): Promise<void>;
   readConfig(id: string): Promise<ConfigDocument>;
   validateConfig(id: string, text: string): Promise<ConfigValidation>;
   saveConfig(id: string, text: string, revision: string): Promise<ConfigDocument>;

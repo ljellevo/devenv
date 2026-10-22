@@ -28,5 +28,7 @@ export class HarnessActivity {
     this.timers.set(event.id, setTimeout(() => { this.timers.delete(event.id); if (this.statuses[event.id] === status && status.state === 'working') { status.state = 'idle'; this.changed(); } }, idleAfter));
     if (status.state !== 'working') { status.state = 'working'; this.changed(); }
   }
+  /** The harness's tab was closed. */
+  forget(id: string) { this.settle(id); this.touched.delete(id); if (id in this.statuses) { delete this.statuses[id]; this.changed(); } }
   private settle(id: string) { clearTimeout(this.timers.get(id)); this.timers.delete(id); }
 }

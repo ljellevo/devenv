@@ -37,8 +37,9 @@ export function App() {
   const [settings, setSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const [view, setView] = useState<View>('services');
-  // The project whose harness sheet is open, so choosing another project never launches a harness by itself.
-  const [terminalProject, setTerminalProject] = useState<string>();
+  // The agent sheet follows the selected project: switching projects while it is open shows that project's agents,
+  // and while it is minimized, switching never launches a harness by itself.
+  const [agentOpen, setAgentOpen] = useState(false);
   const shownProject = useRef<string | undefined>(undefined);
   const [installMenu, setInstallMenu] = useState(false);
   const installMenuHost = useRef<HTMLDivElement>(null);
@@ -103,7 +104,7 @@ export function App() {
       const target = event.target as HTMLElement;
       const row = target.closest<HTMLElement>('[data-tree-kind="project"]');
       if (row ? row.dataset.treeId !== shownProject.current : !!target.closest('button, a, input, textarea, select, summary, [contenteditable], [role="tab"], [role="dialog"], [role="menu"]')) return;
-      event.preventDefault(); setTerminalProject(shownProject.current);
+      event.preventDefault(); setAgentOpen(true);
     };
     document.addEventListener('keydown', shortcut);
     return () => document.removeEventListener('keydown', shortcut);
@@ -218,7 +219,7 @@ export function App() {
       </>}
       <footer className="flex h-8 shrink-0 items-center justify-between border-t px-7 text-[10px] text-muted-foreground"><span>Local commands. A shared routine.</span><span>{state.scanning ? 'Discovering projects…' : `${state.settings.roots.length} search folder${state.settings.roots.length === 1 ? '' : 's'}`}<span className="mx-2 opacity-30">|</span>{platformName(state.hostPlatform)}</span></footer>
     </main>
-    {project && <HarnessTerminal key={project.id} project={project} state={state} open={terminalProject === project.id} onOpenChange={open => setTerminalProject(open ? project.id : undefined)} run={run} onSettings={() => { setSettingsTab('general'); setSettings(true); }} />}
+    {project && <HarnessTerminal key={project.id} project={project} state={state} open={agentOpen} onOpenChange={setAgentOpen} run={run} onSettings={() => { setSettingsTab('general'); setSettings(true); }} />}
     <CommandPalette state={state} open={paletteOpen} setOpen={setPaletteOpen} onProject={selectProject} onCreate={() => void createProject(true)} onAdd={() => void createProject()} onAddFolder={() => run(() => window.devenv.addFolder())} onHelp={openHelp} onSettings={() => { setSettingsTab('general'); setSettings(true); }} />
     <Help context={helpContext} open={helpOpen} onOpenChange={setHelpOpen} />
     <ProjectSetup context={{ host: state.hostPlatform, target: state.projects.find(project => project.path === setupPath)?.executionTarget ?? { kind: 'native' } }} path={setupPath} onClose={() => setSetupPath(null)} />

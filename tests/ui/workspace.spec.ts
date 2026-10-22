@@ -39,7 +39,7 @@ test.beforeEach(async ({ page }) => {
       logs: async () => [], restart: async () => {}, openTerminal: async () => { (window as any).calls.push(['terminal']); },
       openConfigFinder: async id => { (window as any).calls.push(['finder', id]); }, openConfigTerminal: async id => { (window as any).calls.push(['config-terminal', id]); },
       harnessOpen: async (id, cols, rows, restart) => {
-        const choice = state.settings.projectHarnesses?.[id] ?? state.settings;
+        const choice = state.settings.projectHarnesses?.[id.replace(/:\d+$/, '')] ?? state.settings;
         const command = choice.harness === 'custom' ? choice.harnessCommand : choice.harness === 'codex' ? 'codex' : 'claude';
         if (!harnessRuns[id]?.running || restart) { harnessRuns[id] = { run: (harnessRuns[id]?.run ?? 0) + 1, command, running: true }; (window as any).calls.push(['harness', id, command]); harnessState(id, 'idle'); }
         const output = `${harnessRuns[id].command} ready in ${id}\r\n`;
@@ -47,7 +47,7 @@ test.beforeEach(async ({ page }) => {
       },
       // Enter makes the fake harness work for a moment before it goes idle again.
       harnessInput: async (id, data) => { const { run } = harnessRuns[id]; harnessListener({ id, run, data: `echo:${data}`, offset: 1000 }); if (data === '\r') { harnessState(id, 'working'); setTimeout(() => { if (harnessRuns[id].run === run && harnessRuns[id].running) harnessState(id, 'idle'); }, 1200); } }, harnessResize: async () => {},
-      harnessClose: async id => { const { run } = harnessRuns[id]; harnessRuns[id].running = false; harnessExitListener({ id, run, exitCode: 0 }); harnessState(id, 'exited'); },
+      harnessClose: async (id, forget) => { const { run } = harnessRuns[id]; harnessRuns[id].running = false; harnessExitListener({ id, run, exitCode: 0 }); harnessState(id, 'exited'); if (forget) { delete state.harnesses[id]; listener(structuredClone(state)); } },
       onHarnessOutput: callback => { harnessListener = callback; return () => {}; }, onHarnessExit: callback => { harnessExitListener = callback; return () => {}; },
       readConfig: async id => ({ path: projects.find(p => p.id === id)!.path, text: 'version = 1\nname = "Intivo"\n\n[services.api]\ncwd = "."\ncommand = "npm run dev"\n', revision: '0'.repeat(64) }),
       validateConfig: async () => ({ valid: true }), saveConfig: async (id, text) => ({ path: projects.find(p => p.id === id)!.path, text, revision: '1'.repeat(64) }),
@@ -239,6 +239,103 @@ test('a project can override the harness from Settings', async ({ page }) => {
   await page.getByRole('button', { name: /^aider/ }).click();
   await menu.selectOption('Default · Claude Code');
   await expect(menu.getByRole('option')).toHaveText(['Default · Claude Code', 'Claude Code', 'Codex', 'Custom command…']);
+});
+
+test('the agent sheet opens more tabs from + or ⌘T, and each tab runs its own harness', async ({ page }) => {
+  await page.goto('/');
+  const sheet = page.getByRole('complementary', { name: 'Claude Code terminal' });
+  const tabs = sheet.getByRole('tablist', { name: 'Agent tabs' }).getByRole('tab');
+  const terminal = page.getByLabel('Coding agent terminal');
+  const pill = page.getByRole('button', { name: /^Claude Code/ });
+  const calls = () => page.evaluate(() => (window as any).calls);
+  await pill.click();
+  await expect(terminal).toContainText('claude ready in intivo');
+  await expect(tabs).toHaveText(['Claude Code']);
+  // A new tab starts its harness right away and is selected.
+  await sheet.getByRole('button', { name: 'New tab' }).click();
+  await expect(tabs).toHaveText(['Claude Code 1', 'Claude Code 2']);
+  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(terminal).toContainText('claude ready in intivo:2');
+  // ⌘T works while the terminal has focus.
+  await terminal.click();
+  await page.keyboard.press('Meta+t');
+  await expect(tabs).toHaveCount(3);
+  await expect(terminal).toContainText('claude ready in intivo:3');
+  expect(await calls()).toEqual([['harness', 'intivo', 'claude'], ['harness', 'intivo:2', 'claude'], ['harness', 'intivo:3', 'claude']]);
+  // Each tab keeps its own terminal, and a working tab shows it on the tab and the pill.
+  await tabs.first().click();
+  await expect(terminal).not.toContainText('intivo:');
+  await terminal.click();
+  await page.keyboard.press('Enter');
+  await expect(tabs.first().getByLabel('Working')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Minimize' }).click();
+  await expect(pill).toHaveText('Claude CodeWorking');
+  await expect(pill).toHaveText('Claude CodeIdle');
+  // ⌘T on a minimized sheet opens it with a new tab.
+  await page.locator('body').press('Meta+t');
+  await expect(sheet).toBeInViewport();
+  await expect(tabs).toHaveCount(4);
+  await expect(terminal).toContainText('claude ready in intivo:4');
+  // Closing a tab stops its harness; the others keep running.
+  await sheet.getByRole('button', { name: 'Close Claude Code 4' }).click();
+  // Closing the selected tab selects the one before it.
+  await expect(tabs.nth(2)).toHaveAttribute('aria-selected', 'true');
+  await sheet.getByRole('button', { name: 'Close Claude Code 2' }).click();
+  await expect(tabs).toHaveText(['Claude Code 1', 'Claude Code 2']);
+  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(terminal).toContainText('claude ready in intivo:3');
+  await sheet.getByRole('button', { name: 'Close Claude Code 2' }).click();
+  // Closing the last tab minimizes the sheet, and opening it again starts a fresh harness.
+  await sheet.getByRole('button', { name: 'Close Claude Code' }).click();
+  await expect(sheet).not.toBeInViewport();
+  await expect(pill).toHaveText('Claude Code');
+  await pill.click();
+  await expect(tabs).toHaveText(['Claude Code']);
+  await expect(terminal).toContainText('claude ready in intivo');
+  expect((await calls()).length).toBe(5);
+});
+
+test('choosing another project while the agent sheet is open switches to its agents, and tabs can be renamed and colored', async ({ page }) => {
+  await page.goto('/');
+  const sheet = page.getByRole('complementary', { name: 'Claude Code terminal' });
+  const tabs = sheet.getByRole('tablist', { name: 'Agent tabs' }).getByRole('tab');
+  const terminal = page.getByLabel('Coding agent terminal');
+  const projects = page.getByRole('navigation', { name: 'Projects' });
+  await page.getByRole('button', { name: /^Claude Code/ }).click();
+  await expect(terminal).toContainText('claude ready in intivo');
+  // Right-click a tab to color it; double-click to rename it. Escape keeps the name it had.
+  await tabs.first().click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Tab options' });
+  await menu.getByRole('menuitemradio', { name: 'Blue' }).click();
+  await expect(menu).toBeHidden();
+  await expect(tabs.first().getByTestId('tab-color')).toHaveCSS('background-color', 'rgb(59, 130, 246)');
+  await tabs.first().dblclick();
+  const name = sheet.getByRole('textbox', { name: 'Tab name' });
+  await name.fill('Refactor auth');
+  await name.press('Enter');
+  await expect(tabs).toHaveText(['Refactor auth']);
+  await tabs.first().click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: 'Rename' }).click();
+  await name.fill('Something else');
+  await name.press('Escape');
+  await expect(tabs).toHaveText(['Refactor auth']);
+  // The sheet stays open on the chosen project and starts its agent there.
+  await page.mouse.move(2, 100);
+  await projects.getByRole('button', { name: /Dealroom/ }).click();
+  await expect(page.getByRole('heading', { name: 'Dealroom', exact: true })).toBeVisible();
+  await expect(sheet).toBeInViewport();
+  await expect(sheet).toContainText('Dealroom');
+  await expect(terminal).toContainText('claude ready in dealroom');
+  await expect(tabs).toHaveText(['Claude Code']);
+  // Going back attaches to the running agent and keeps the tab's name and color.
+  await page.mouse.move(700, 400);
+  await page.mouse.move(2, 100);
+  await projects.getByRole('button', { name: /Intivo/ }).click();
+  await expect(sheet).toBeInViewport();
+  await expect(terminal).toContainText('claude ready in intivo');
+  await expect(tabs).toHaveText(['Refactor auth']);
+  await expect(tabs.first().getByTestId('tab-color')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([['harness', 'intivo', 'claude'], ['harness', 'dealroom', 'claude']]);
 });
 
 test('Settings chooses the default harness', async ({ page }) => {

@@ -24,7 +24,7 @@ import { startUpdatePolling } from '../core/update-polling';
 import { openDirectoryTerminal, openSessionTerminal } from './terminals';
 import { HarnessActivity } from './harness-activity';
 import { terminalApps, terminalLabel } from '../shared/terminals';
-import { harnesses, harnessCommand, projectHarness } from '../shared/harnesses';
+import { harnesses, harnessCommand, harnessProject, projectHarness } from '../shared/harnesses';
 import trayIcon from './trayTemplate.png';
 import trayIcon2x from './trayTemplate@2x.png';
 import type { AppState, ConfigValidation, HarnessExit, HarnessOutput, HarnessSnapshot, InstallState, Settings, Session, TerminalApp } from '../shared/types';
@@ -375,21 +375,27 @@ function registerIPC() {
     openTerminal: terminal,
     openConfigFinder: async (id: unknown) => { const project = configProject(id); const target = project.executionTarget; if (target?.kind === 'wsl') { await configCompanion(id)!.request('read-config', project.path); shell.showItemInFolder(explorerPath(target.distribution, project.path)); } else shell.showItemInFolder((await readConfigDocument(project.path)).path); },
     openConfigTerminal: async (id: unknown) => { const project = configProject(id); const target = project.executionTarget; if (target?.kind === 'wsl') { await configCompanion(id)!.request('read-config', project.path); await openWslTerminal(state.settings.terminal, target.distribution, posix.dirname(project.path)); } else await openDirectoryTerminal(state.settings.terminal, dirname((await readConfigDocument(project.path)).path)); },
+    // A harness key names one tab of a project's agent terminal; see harnessKey.
     harnessOpen: async (id: unknown, cols: unknown, rows: unknown, restart: unknown) => {
-      const project = configProject(id), command = harnessCommand(projectHarness(state.settings, project.id));
+      const key = z.string().parse(id), project = configProject(harnessProject(key)), command = harnessCommand(projectHarness(state.settings, project.id));
       if (!command) throw new Error('Enter a command for your custom harness first.');
       const size = { cols: z.number().int().min(1).max(500).parse(cols), rows: z.number().int().min(1).max(200).parse(rows) };
       // A running harness stays with its supervisor; only a new one follows the project's current target.
-      if (!harnessHosts.has(project.id)) harnessHosts.set(project.id, configCompanion(id));
+      if (!harnessHosts.has(key)) harnessHosts.set(key, configCompanion(project.id));
       // The Terminal tab can be opened while the supervisor is still reading the login environment.
-      for (const deadline = Date.now() + 15000; !ready && !harnessHosts.get(project.id) && Date.now() < deadline;) await delay(100);
-      const snapshot = await harnessRpc<HarnessSnapshot>(project.id, 'harness-open', { path: project.path, command, ...size, restart: restart === true });
-      harnessActivity.opened(project.id, snapshot);
+      for (const deadline = Date.now() + 15000; !ready && !harnessHosts.get(key) && Date.now() < deadline;) await delay(100);
+      const snapshot = await harnessRpc<HarnessSnapshot>(key, 'harness-open', { path: project.path, command, ...size, restart: restart === true });
+      harnessActivity.opened(key, snapshot);
       return snapshot;
     },
     harnessInput: (id: unknown, data: unknown) => { const key = z.string().parse(id); if (harnessHosts.has(key)) { harnessActivity.touch(key); return harnessRpc(key, 'harness-input', { data: z.string().max(1024 * 1024).parse(data) }); } },
     harnessResize: (id: unknown, cols: unknown, rows: unknown) => { const key = z.string().parse(id); if (harnessHosts.has(key)) { harnessActivity.touch(key); return harnessRpc(key, 'harness-resize', { cols: z.number().int().min(1).max(500).parse(cols), rows: z.number().int().min(1).max(200).parse(rows) }); } },
-    harnessClose: async (id: unknown) => { const key = z.string().parse(id); if (!harnessHosts.has(key)) return; await harnessRpc(key, 'harness-close'); harnessHosts.delete(key); },
+    // Closing a tab also forgets its status; Stop keeps it so the tab can show that the harness exited.
+    harnessClose: async (id: unknown, forget: unknown) => {
+      const key = z.string().parse(id);
+      if (harnessHosts.has(key)) { await harnessRpc(key, 'harness-close'); harnessHosts.delete(key); }
+      if (forget === true) harnessActivity.forget(key);
+    },
     readConfig: (id: unknown) => configCompanion(id)?.request('read-config', configPath(id)) ?? readConfigDocument(configPath(id)),
     validateConfig: async (id: unknown, text: unknown): Promise<ConfigValidation> => {
       const path = configPath(id);

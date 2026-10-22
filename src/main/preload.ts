@@ -14,7 +14,7 @@ const api: DesktopAPI = {
   startService: (id, name) => invoke('startService', id, name), stopService: (id, name) => invoke('stopService', id, name),
   logs: service => invoke('logs', service), openTerminal: () => invoke('openTerminal'),
   openConfigFinder: id => invoke('openConfigFinder', id), openConfigTerminal: id => invoke('openConfigTerminal', id),
-  harnessOpen: (id, cols, rows, restart) => invoke('harnessOpen', id, cols, rows, restart), harnessInput: (id, data) => invoke('harnessInput', id, data), harnessResize: (id, cols, rows) => invoke('harnessResize', id, cols, rows), harnessClose: id => invoke('harnessClose', id),
+  harnessOpen: (id, cols, rows, restart) => invoke('harnessOpen', id, cols, rows, restart), harnessInput: (id, data) => invoke('harnessInput', id, data), harnessResize: (id, cols, rows) => invoke('harnessResize', id, cols, rows), harnessClose: (id, forget) => invoke('harnessClose', id, forget),
   readConfig: id => invoke('readConfig', id), validateConfig: (id, text) => invoke('validateConfig', id, text),
   saveConfig: (id, text, revision) => invoke('saveConfig', id, text, revision),
   checkUpdate: () => invoke('checkUpdate'), installUpdate: () => invoke('installUpdate'),

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { customHarnesses, harnessCommand, harnessKeys, harnessLabel, projectHarness } from '../src/shared/harnesses';
+import { customHarnesses, harnessCommand, harnessKey, harnessKeys, harnessLabel, harnessProject, harnessTab, newTabShortcut, projectHarness } from '../src/shared/harnesses';
 import type { Settings } from '../src/shared/types';
 
 const settings = (value: Partial<Settings>) => value;
@@ -35,4 +35,24 @@ it('translates the chords a terminal cannot send on its own', () => {
   expect(harnessKeys(chord('Backspace'), 'macos')).toBeUndefined();
   expect(harnessKeys(chord('Backspace', { metaKey: true, altKey: true }), 'macos')).toBeUndefined();
   expect(harnessKeys(chord('k', { metaKey: true }), 'macos')).toBeUndefined();
+});
+
+it('keys the first tab by the project alone and later tabs by their number', () => {
+  expect(harnessKey('a1b2', 1)).toBe('a1b2');
+  expect(harnessKey('a1b2', 3)).toBe('a1b2:3');
+  expect(harnessProject('a1b2')).toBe('a1b2');
+  expect(harnessProject('a1b2:3')).toBe('a1b2');
+  expect(harnessTab('a1b2', 'a1b2')).toBe(1);
+  expect(harnessTab('a1b2:3', 'a1b2')).toBe(3);
+  expect(harnessTab('a1b2c3', 'a1b2')).toBeUndefined();
+  expect(harnessTab('a1b2:x', 'a1b2')).toBeUndefined();
+});
+
+it('opens a new tab with ⌘T on macOS and Ctrl+Shift+T elsewhere, leaving Ctrl+T to the terminal', () => {
+  const key = (value: Partial<{ shiftKey: boolean; metaKey: boolean; ctrlKey: boolean; altKey: boolean }>) => ({ key: 't', shiftKey: false, metaKey: false, ctrlKey: false, altKey: false, ...value });
+  expect(newTabShortcut(key({ metaKey: true }), 'macos')).toBe(true);
+  expect(newTabShortcut(key({ ctrlKey: true }), 'macos')).toBe(false);
+  expect(newTabShortcut(key({ ctrlKey: true }), 'linux')).toBe(false);
+  expect(newTabShortcut({ ...key({ ctrlKey: true, shiftKey: true }), key: 'T' }, 'windows')).toBe(true);
+  expect(newTabShortcut(key({ metaKey: true, shiftKey: true }), 'macos')).toBe(false);
 });
