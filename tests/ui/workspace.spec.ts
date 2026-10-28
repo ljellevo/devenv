@@ -85,10 +85,10 @@ test('start, view logs, open the terminal app, switch, and stop through the shar
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Intivo', exact: true })).toBeVisible();
   await page.mouse.move(2, 100);
-  await expect(page.getByRole('navigation', { name: 'Projects' }).getByText('Stopped · 6 services')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Projects' }).locator('[data-status="stopped"]', { hasText: 'Intivo' })).toBeVisible();
   await page.getByRole('button', { name: 'Run project', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Project actions' })).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: 'Projects' }).getByText('Running · 6 services')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Projects' }).locator('[data-status="running"]', { hasText: 'Intivo' })).toBeVisible();
   // The hover sidebar covers the tabs until it finishes closing; clicking sooner re-opens it.
   await expect(page.locator('aside').first()).toHaveClass(/-translate-x-full/);
   await page.getByRole('tab', { name: 'Logs' }).click();
@@ -142,7 +142,11 @@ test('the agent terminal slides in as a sheet, keeps running when minimized, and
   await sheet.getByRole('button', { name: 'Minimize' }).click();
   await expect(sheet).not.toBeInViewport();
   await expect(pill).toHaveText('Claude CodeWorking');
+  // The project's sidebar row spins while its agent works.
+  const agentSpinner = page.getByRole('navigation', { name: 'Projects' }).locator('[data-tree-id="intivo"]').getByLabel('Agent working');
+  await expect(agentSpinner).toHaveCount(1);
   await expect(pill).toHaveText('Claude CodeIdle');
+  await expect(agentSpinner).toHaveCount(0);
   await pill.click();
   await expect(sheet).toBeInViewport();
   await expect(terminal).toContainText('echo:hecho:i');
