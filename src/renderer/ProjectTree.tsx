@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Folder, FolderPlus, Layers3, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Folder, FolderPlus, Layers3, LoaderCircle, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import type { Project, ProjectFolder, Settings } from '../shared/types';
+import type { HarnessStatus, Project, ProjectFolder, Settings } from '../shared/types';
+import { harnessProject } from '../shared/harnesses';
 import { dropEntry, groupKey, orderedChildren, treeKey, type DropTarget, type TreeEntry, type TreeLayout } from '../shared/project-tree';
 
 type Editor = { kind: 'create'; parentId: string | null } | { kind: 'rename' | 'delete'; folder: ProjectFolder };
 
-export function ProjectTree({ projects, settings, selectedId, activeId, activeStatus, search, onSelect, onDragChange, run }: {
-  projects: Project[]; settings: Settings; selectedId?: string; activeId?: string; activeStatus?: string; search: string;
+export function ProjectTree({ projects, settings, selectedId, activeId, activeStatus, harnesses, search, onSelect, onDragChange, run }: {
+  projects: Project[]; settings: Settings; selectedId?: string; activeId?: string; activeStatus?: string; harnesses?: Record<string, HarnessStatus>; search: string;
   onSelect(id: string): void; onDragChange?(dragging: boolean): void; run(action: () => Promise<unknown>): void;
 }) {
   const folders = settings.projectFolders ?? [];
@@ -29,6 +30,8 @@ export function ProjectTree({ projects, settings, selectedId, activeId, activeSt
   const dragWasActive = useRef(false);
   const suppressClick = useRef(false);
   const query = search.trim().toLowerCase();
+  // Projects with at least one coding agent tab that is working right now.
+  const working = new Set(Object.entries(harnesses ?? {}).filter(([, status]) => status.state === 'working').map(([key]) => harnessProject(key)));
   useEffect(() => { if (dragWasActive.current !== !!dragged) { dragWasActive.current = !!dragged; onDragChange?.(!!dragged); } }, [dragged, onDragChange]);
   const matches = projects.filter(project => project.name.toLowerCase().includes(query));
   useEffect(() => () => pointerCleanup.current?.(), []);
@@ -114,17 +117,20 @@ export function ProjectTree({ projects, settings, selectedId, activeId, activeSt
     window.addEventListener('blur', onBlur);
     pointerCleanup.current = cleanup;
   }
+  function projectStatus(project: Project) {
+    if (project.draft || activeId !== project.id) return 'stopped';
+    return activeStatus === 'degraded' || activeStatus === 'starting' || activeStatus === 'stopping' ? activeStatus : 'running';
+  }
   function projectDetails(project: Project) {
-    const serviceCount = project.services.filter(service => service.enabled).length;
-    const status = project.draft ? 'Draft' : activeId === project.id ? activeStatus === 'degraded' ? 'Degraded' : activeStatus === 'starting' ? 'Starting' : activeStatus === 'stopping' ? 'Stopping' : 'Running' : 'Stopped';
-    return <><Layers3 className={cn('size-4 shrink-0', selectedId === project.id ? 'text-primary' : 'text-muted-foreground')} /><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-medium">{project.name}</div><div className="mt-0.5 flex items-center gap-1 truncate text-[10px] text-muted-foreground"><span className={cn('size-1.5 shrink-0 rounded-full', status === 'Running' ? 'bg-emerald-500' : status === 'Degraded' ? 'bg-amber-500' : status === 'Starting' || status === 'Stopping' ? 'bg-sky-500' : 'bg-muted-foreground/50')} /><span>{`${status} · ${serviceCount} service${serviceCount === 1 ? '' : 's'}`}</span></div></div></>;
+    const status = projectStatus(project);
+    return <><Layers3 className={cn('size-3.5 shrink-0', status === 'running' ? 'text-emerald-500' : status === 'degraded' ? 'text-amber-500' : status === 'starting' || status === 'stopping' ? 'text-sky-500' : 'text-muted-foreground')} /><span className="min-w-0 flex-1 truncate text-[12px] font-medium">{project.name}</span>{working.has(project.id) && <LoaderCircle aria-label="Agent working" className="size-3 shrink-0 animate-spin text-amber-500" />}</>;
   }
   function dragRow(depth: number, target: DropTarget) {
     if (!dragged || !dropTarget || JSON.stringify(dropTarget) !== JSON.stringify(target)) return null;
     const project = dragged.kind === 'project' ? projects.find(item => item.id === dragged.id) : undefined;
     const folder = dragged.kind === 'folder' ? folders.find(item => item.id === dragged.id) : undefined;
     if (!project && !folder) return null;
-    return <div role="presentation" data-drop-preview className={cn('my-1 flex items-center rounded-lg bg-[var(--surface)] opacity-50', project ? 'gap-2.5 px-2 py-2.5' : 'gap-1.5 py-2 pl-1')} style={{ marginLeft: depth * 13 }}>
+    return <div role="presentation" data-drop-preview className={cn('my-1 flex items-center rounded-lg bg-[var(--surface)] opacity-50', project ? 'gap-2 px-2 py-1.5' : 'gap-1.5 py-2 pl-1')} style={{ marginLeft: depth * 13 }}>
       {project ? projectDetails(project) : <><span className="text-muted-foreground">{collapsed.includes(folder!.id) ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}</span><Folder className="size-3.5 shrink-0 text-primary" /><span className="truncate text-xs font-medium">{folder!.name}</span><span className="shrink-0 text-[10px] text-muted-foreground">{projects.filter(item => descendants(folder!.id).includes(assignments[item.id])).length}</span></>}
     </div>;
   }
@@ -134,7 +140,7 @@ export function ProjectTree({ projects, settings, selectedId, activeId, activeSt
     const folder = dragged.kind === 'folder' ? folders.find(item => item.id === dragged.id) : undefined;
     if (!project && !folder) return null;
     const { offsetX, offsetY, width } = dragMetrics.current;
-    return createPortal(<div aria-hidden="true" className={cn('pointer-events-none fixed z-[100] flex items-center rounded-lg bg-[var(--surface)] opacity-75 shadow-lg', project ? 'gap-2.5 px-2 py-2.5' : 'gap-1.5 py-2 pl-1')} style={{ left: pointerPosition.x - offsetX, top: pointerPosition.y - offsetY, width }}>
+    return createPortal(<div aria-hidden="true" className={cn('pointer-events-none fixed z-[100] flex items-center rounded-lg bg-[var(--surface)] opacity-75 shadow-lg', project ? 'gap-2 px-2 py-1.5' : 'gap-1.5 py-2 pl-1')} style={{ left: pointerPosition.x - offsetX, top: pointerPosition.y - offsetY, width }}>
       {project ? projectDetails(project) : <><span className="text-muted-foreground">{collapsed.includes(folder!.id) ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}</span><Folder className="size-3.5 shrink-0 text-primary" /><span className="truncate text-xs font-medium">{folder!.name}</span><span className="shrink-0 text-[10px] text-muted-foreground">{projects.filter(item => descendants(folder!.id).includes(assignments[item.id])).length}</span><FolderPlus className="ml-auto size-3 text-muted-foreground" /><Pencil className="size-3 text-muted-foreground" /><Trash2 className="mr-1 size-3 text-muted-foreground" /></>}
     </div>, document.body);
   }
@@ -169,8 +175,8 @@ export function ProjectTree({ projects, settings, selectedId, activeId, activeSt
     const entry: TreeEntry = { kind: 'project', id: project.id };
     return <div key={project.id}>
       {dragRow(depth, { entry, position: 'before' })}
-      <div data-tree-kind="project" data-tree-id={project.id} className={cn('group flex items-center rounded-lg', selectedId === project.id ? 'bg-[var(--surface)] shadow-xs ring-1 ring-black/4' : 'hover:bg-[var(--surface-hover)]', dragged?.kind === 'project' && dragged.id === project.id && 'h-0 overflow-hidden opacity-0 pointer-events-none ring-0 shadow-none')} style={{ marginLeft: depth * 13 }}>
-      <button onPointerDown={event => beginPointer(event, entry)} onClick={() => { if (!suppressClick.current) onSelect(project.id); }} title={project.error} className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 px-2 py-2.5 text-left active:cursor-grabbing">
+      <div data-tree-kind="project" data-tree-id={project.id} data-status={projectStatus(project)} className={cn('group flex items-center rounded-lg', selectedId === project.id ? 'bg-[var(--surface)] shadow-xs ring-1 ring-black/4' : 'hover:bg-[var(--surface-hover)]', dragged?.kind === 'project' && dragged.id === project.id && 'h-0 overflow-hidden opacity-0 pointer-events-none ring-0 shadow-none')} style={{ marginLeft: depth * 13 }}>
+      <button onPointerDown={event => beginPointer(event, entry)} onClick={() => { if (!suppressClick.current) onSelect(project.id); }} title={project.error} className="flex min-w-0 flex-1 cursor-grab items-center gap-2 px-2 py-1.5 text-left active:cursor-grabbing">
         {projectDetails(project)}
       </button>
       </div>
