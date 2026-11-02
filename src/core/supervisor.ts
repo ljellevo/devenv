@@ -54,7 +54,7 @@ async function handleRequest(request: { id: number; method: string; value?: stri
       case 'discover': { const args = JSON.parse(request.value!); value = await discover(args.roots, args.exclusions); break; }
       case 'read-config': value = await readConfigDocument(request.value!); break;
       case 'save-config': { const args = JSON.parse(request.value!); value = await saveConfigDocument(args.path, args.text, args.revision); break; }
-      case 'validate-config': { const args = JSON.parse(request.value!); try { await validateProjectText(args.path, args.text); value = { valid: true }; } catch (error) { value = { valid: false, message: message(error) }; } break; }
+      case 'validate-config': { const args = JSON.parse(request.value!); try { const project = await validateProjectText(args.path, args.text); value = { valid: true, draft: project.draft }; } catch (error) { value = { valid: false, message: message(error) }; } break; }
       case 'directories': { const path = await realpath(request.value || process.env.HOME!); if (!(await stat(path)).isDirectory()) throw new Error('Not a directory'); value = { path, directories: (await readdir(path, { withFileTypes: true })).filter(entry => entry.isDirectory() && !entry.name.startsWith('.')).map(entry => entry.name).sort() }; break; }
       case 'start': if (installer.state?.status === 'running') throw new Error('Wait for installation to finish.'); if (!(await installer.check(request.value!))) throw new Error('Install this project before running it.'); value = await engine.start(request.value!); break;
       case 'start-service': {

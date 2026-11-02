@@ -52,7 +52,7 @@ export function App() {
   // Decided once per launch, so resetting the tutorial in Settings takes effect on the next launch.
   const [onboarding, setOnboarding] = useState<boolean>();
   const [configDirty, setConfigDirty] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{ kind: 'project'; id: string } | { kind: 'created'; project: { id: string; path: string }; prompt: boolean } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ kind: 'project'; id: string } | { kind: 'created'; project: { id: string; path: string } } | null>(null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -126,15 +126,14 @@ export function App() {
     if (configDirty) { setPendingAction({ kind: 'project', id }); return; }
     setSelected(id); setInstallMenu(false); setServiceFilter(''); setView('services'); setSidebarOpen(false);
   };
-  // A project created with an agent guide carries its own instructions, so it skips the setup prompt.
-  const showCreatedProject = (created: { id: string; path: string }, prompt: boolean) => { setSelected(created.id); setServiceFilter(''); setView('config'); setSidebarOpen(false); if (prompt) setSetupPath(created.path); };
+  const showCreatedProject = (created: { id: string; path: string }) => { setSelected(created.id); setServiceFilter(''); setView('config'); setSidebarOpen(false); setSetupPath(created.path); };
   const createProject = async (agentGuide = false) => {
     setError(undefined); setBusy(true); setInstallMenu(false);
-    try { const created = await window.devenv.createProject(agentGuide); if (created) { if (configDirty) setPendingAction({ kind: 'created', project: created, prompt: !agentGuide }); else showCreatedProject(created, !agentGuide); } return !!created; }
+    try { const created = await window.devenv.createProject(agentGuide); if (created) { if (configDirty) setPendingAction({ kind: 'created', project: created }); else showCreatedProject(created); } return !!created; }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); return false; }
     finally { setBusy(false); }
   };
-  const confirmDiscard = () => { const action = pendingAction; setPendingAction(null); if (action) setConfigDirty(false); if (action?.kind === 'project') { setSelected(action.id); setServiceFilter(''); setView('services'); setSidebarOpen(false); } else if (action?.kind === 'created') showCreatedProject(action.project, action.prompt); };
+  const confirmDiscard = () => { const action = pendingAction; setPendingAction(null); if (action) setConfigDirty(false); if (action?.kind === 'project') { setSelected(action.id); setServiceFilter(''); setView('services'); setSidebarOpen(false); } else if (action?.kind === 'created') showCreatedProject(action.project); };
 
   if (!state) return <div className="flex h-screen items-center justify-center gap-3 text-muted-foreground"><ArrowLeftRight className="size-5" />{error || 'Opening your workspace…'}</div>;
   const session = state.session;

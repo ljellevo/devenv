@@ -401,7 +401,7 @@ function registerIPC() {
       const path = configPath(id);
       const remote = configCompanion(id);
       if (remote) return remote.request('validate-config', JSON.stringify({ path, text: z.string().max(1024 * 1024).parse(text) }));
-      try { await validateProjectText(path, z.string().max(1024 * 1024).parse(text)); return { valid: true }; }
+      try { const project = await validateProjectText(path, z.string().max(1024 * 1024).parse(text)); return { valid: true, draft: project.draft }; }
       catch (error) {
         const source = error as { line?: number; col?: number };
         return { valid: false, message: message(error), line: source.line, column: source.col };
