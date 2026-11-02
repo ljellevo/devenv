@@ -31,11 +31,16 @@ describe('configuration discovery', () => {
     ['missing dependency', 'depends_on=["missing"]', /missing or disabled/],
     ['cycle', 'depends_on=["b"]\n[services.b]\ncommand="true"\ndepends_on=["a"]', /cycle/],
     ['background cleanup', 'mode="background"', /stop_command/],
-    ['unknown fields', 'comand="typo"', /Unrecognized key/],
+    ['unknown fields', 'comand="typo"', /^Unknown key comand in services\.a\.$/],
   ])('rejects %s', async (_label, extra, error) => {
     const root = await fixture(), file = join(root, 'devenv.toml');
     await writeFile(file, `version=1\nname="Test"\n[services.a]\ncommand="true"\nports=[3100]\n${extra}\n`);
     await expect(loadProject(file)).rejects.toThrow(error);
+  });
+  it('explains a config that has no services yet', async () => {
+    const root = await fixture(), file = join(root, 'devenv.toml');
+    await writeFile(file, 'version=1\nname="Test"\n');
+    await expect(loadProject(file)).rejects.toThrow(/^Missing services\. Add at least one \[services\.<name>\] table\.$/);
   });
   it('reports invalid files alongside valid projects without executing commands', async () => {
     const root = await fixture(); await mkdir(join(root, 'other'));

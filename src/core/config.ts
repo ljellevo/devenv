@@ -29,6 +29,16 @@ const installStepSchema = z.object({ id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-
 const installSchema = z.object({ cwd: z.string().default('.'), check_command: command.optional(), steps: z.array(installStepSchema).min(1) }).strict();
 const schema = z.object({ version: z.literal(1), name: nonempty, services: z.record(serviceSchema), install: installSchema.optional() }).strict();
 
+// Zod's own message is a JSON dump of every issue; this reads as one line, e.g. "Missing services. Add at least one [services.<name>] table."
+function describeIssues(error: z.ZodError): string {
+  return error.issues.map(issue => {
+    const at = issue.path.join('.');
+    if (issue.code === 'invalid_type' && issue.received === 'undefined') return at === 'services' ? 'Missing services. Add at least one [services.<name>] table.' : `Missing ${at}.`;
+    if (issue.code === 'unrecognized_keys') return `Unknown ${issue.keys.length > 1 ? 'keys' : 'key'} ${issue.keys.join(', ')}${at ? ` in ${at}` : ''}.`;
+    return `${at ? `${at}: ` : ''}${issue.message}.`;
+  }).join(' ');
+}
+
 export async function loadProject(file: string, context = localContext()): Promise<Project> {
   const path = await realpath(file);
   const text = await readFile(path, 'utf8');
@@ -38,7 +48,9 @@ export async function loadProject(file: string, context = localContext()): Promi
 
 export async function validateProjectText(file: string, text: string, context = localContext()): Promise<Project> {
   const path = await realpath(file);
-  const parsed = schema.parse(TOML.parse(text));
+  const result = schema.safeParse(TOML.parse(text));
+  if (!result.success) throw new Error(describeIssues(result.error));
+  const parsed = result.data;
   const platform = executionPlatform(context.host, context.target);
   const resolveOptional = (value: z.infer<typeof command> | undefined) => value === undefined ? undefined : resolveCommand(value, platform);
   const data = { ...parsed, services: Object.fromEntries(Object.entries(parsed.services).map(([name, service]) => [name, { ...service, command: resolveCommand(service.command, platform), ready_command: resolveOptional(service.ready_command), stop_command: resolveOptional(service.stop_command), logs_command: resolveOptional(service.logs_command) }])), install: parsed.install && { ...parsed.install, check_command: resolveOptional(parsed.install.check_command), steps: parsed.install.steps.map(step => ({ ...step, command: resolveCommand(step.command, platform) })) } };
