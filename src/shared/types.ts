@@ -30,7 +30,7 @@ export interface HarnessExit { id: string; run: number; exitCode: number }
 // Working while the harness keeps writing output, idle once it goes quiet and waits for the user.
 export interface HarnessStatus { run: number; command: string; state: 'working' | 'idle' | 'exited' }
 export interface ConfigDocument { path: string; text: string; revision: string }
-export interface ConfigValidation { valid: boolean; message?: string; line?: number; column?: number }
+export interface ConfigValidation { valid: boolean; draft?: boolean; message?: string; line?: number; column?: number }
 export interface UpdateInfo {
   status: 'idle' | 'checking' | 'available' | 'uptodate' | 'error' | 'downloading' | 'downloaded';
   current: string; latest?: string; notes?: string; message?: string; progress?: number; checkedAt?: string;

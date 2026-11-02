@@ -37,10 +37,12 @@ describe('configuration discovery', () => {
     await writeFile(file, `version=1\nname="Test"\n[services.a]\ncommand="true"\nports=[3100]\n${extra}\n`);
     await expect(loadProject(file)).rejects.toThrow(error);
   });
-  it('explains a config that has no services yet', async () => {
+  it('loads a config without services as a draft', async () => {
     const root = await fixture(), file = join(root, 'devenv.toml');
     await writeFile(file, 'version=1\nname="Test"\n');
-    await expect(loadProject(file)).rejects.toThrow(/^Missing services\. Add at least one \[services\.<name>\] table\.$/);
+    expect(await loadProject(file)).toMatchObject({ name: 'Test', services: [], draft: true });
+    await writeFile(file, 'version=1\nname="Test"\n[services]\n');
+    expect(await loadProject(file)).toMatchObject({ name: 'Test', services: [], draft: true });
   });
   it('reports invalid files alongside valid projects without executing commands', async () => {
     const root = await fixture(); await mkdir(join(root, 'other'));

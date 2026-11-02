@@ -465,17 +465,19 @@ test('command menu opens from the header and shortcut, and Help is available', a
   await expect(page.getByRole('dialog', { name: 'Help' }).getByRole('heading', { name: 'Run projects and services' })).toBeVisible();
 });
 
-test('Create project in the command menu makes a new project with an agent guide and no setup prompt', async ({ page }) => {
+test('Create project in the command menu makes a new project with an agent guide and shows the setup prompt', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Project actions' }).click();
   await expect(page.getByRole('menuitem')).toHaveText(['Reinstall project']);
   await page.keyboard.press('Escape');
   await page.keyboard.press('ControlOrMeta+k');
   await page.getByRole('option', { name: 'Create project' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Finish your project configuration' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'New Project', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Config' })).toHaveAttribute('data-state', 'active');
   await expect(page.getByRole('menu')).toHaveCount(0);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).calls)).toEqual([['create', true]]);
 });
 
