@@ -8,7 +8,7 @@ export interface ServiceConfig {
 }
 export interface InstallStep { id: string; command: string; cwd: string; env: Record<string, string>; env_file?: string; timeout: number; interactive: boolean; notes?: string }
 export interface InstallConfig { cwd: string; check_command?: string; steps: InstallStep[]; recipeHash: string }
-export interface Project { executionSourcePath?: string; executionTarget?: ExecutionTarget; id: string; path: string; name: string; services: ServiceConfig[]; install?: InstallConfig; installed?: boolean; error?: string; draft?: boolean }
+export interface Project { executionSourcePath?: string; executionTarget?: ExecutionTarget; id: string; path: string; name: string; services: ServiceConfig[]; install?: InstallConfig; installed?: boolean; installOutdated?: boolean; error?: string; draft?: boolean }
 export interface InstallState { projectId: string; status: 'running' | 'failed' | 'completed' | 'cancelled'; stepId?: string; stepIndex?: number; completedStepIds: string[]; error?: string; notes?: string }
 export type ServiceStatus = 'pending' | 'starting' | 'running' | 'ready' | 'completed' | 'failed' | 'stopping' | 'stopped';
 export interface ServiceState { name: string; status: ServiceStatus; pid?: number; error?: string; exitCode?: number | null }

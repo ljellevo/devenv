@@ -21,19 +21,16 @@ export class Installer extends EventEmitter {
   async check(file: string): Promise<boolean> {
     const project = await loadProject(file);
     if (!project.install) return true;
-    const record = await readInstallRecord(file, project.install.recipeHash);
-    if (!project.install.check_command) return !!record?.installed;
-    const result = await this.runCheck(project.install);
-    if (!result) {
-      if (record?.installed) await writeInstallRecord(file, { ...record, installed: false });
-      return false;
-    }
-    if (!record?.installed) await writeInstallRecord(file, { version: 1, recipeHash: project.install.recipeHash, completedStepIds: project.install.steps.map(s => s.id), installed: true });
+    // A finished install stays installed, even if the recipe changed or the check would fail now
+    // (for example because a database container is stopped). Reinstall is an explicit choice.
+    if ((await readInstallRecord(file))?.installed) return true;
+    if (!project.install.check_command || !(await this.runCheck(project.install))) return false;
+    await writeInstallRecord(file, { version: 1, recipeHash: project.install.recipeHash, completedStepIds: project.install.steps.map(s => s.id), installed: true });
     return true;
   }
-  private async runCheck(config: InstallConfig): Promise<boolean> {
+  private async runCheck(config: InstallConfig, signal?: AbortSignal): Promise<boolean> {
     if (!(await stat(config.cwd).catch(() => null))?.isDirectory()) return false;
-    try { return (await runCommand(config.check_command!, { cwd: config.cwd } as import('../shared/types').ServiceConfig, this.shell, this.env, 30000, this.abort?.signal)).code === 0; }
+    try { return (await runCommand(config.check_command!, { cwd: config.cwd } as import('../shared/types').ServiceConfig, this.shell, this.env, 30000, signal)).code === 0; }
     catch { return false; }
   }
   install(file: string, mode: 'resume' | 'restart'): Promise<void> {
@@ -47,12 +44,13 @@ export class Installer extends EventEmitter {
     const project = await loadProject(file);
     if (!project.install) throw new Error('This project has no install recipe.');
     const config = project.install;
-    const old = mode === 'resume' ? await readInstallRecord(file, config.recipeHash) : null;
+    const record = mode === 'resume' ? await readInstallRecord(file) : null;
+    const old = record?.recipeHash === config.recipeHash ? record : null;
     const completed = mode === 'resume' && old && !old.installed ? [...old.completedStepIds] : [];
     this.update({ projectId: project.id, status: 'running', completedStepIds: completed });
     try {
       // Check before disturbing another project; explicit reinstall always runs every step.
-      if (mode === 'resume' && !old && config.check_command && await this.runCheck(config)) {
+      if (mode === 'resume' && !old && config.check_command && await this.runCheck(config, this.abort?.signal)) {
         await writeInstallRecord(file, { version: 1, recipeHash: config.recipeHash, completedStepIds: config.steps.map(s => s.id), installed: true });
         this.update({ projectId: project.id, status: 'completed', completedStepIds: config.steps.map(s => s.id) }); return;
       }
@@ -69,7 +67,7 @@ export class Installer extends EventEmitter {
         completed.push(step.id);
         await writeInstallRecord(file, { version: 1, recipeHash: config.recipeHash, completedStepIds: completed, installed: false });
       }
-      if (config.check_command && !(await this.runCheck(config))) throw new Error('Installation steps finished, but check_command did not confirm the project is installed.');
+      if (config.check_command && !(await this.runCheck(config, this.abort?.signal))) throw new Error('Installation steps finished, but check_command did not confirm the project is installed.');
       const record: InstallRecord = { version: 1, recipeHash: config.recipeHash, completedStepIds: completed, installed: true };
       await writeInstallRecord(file, record);
       this.update({ projectId: project.id, status: 'completed', completedStepIds: completed });

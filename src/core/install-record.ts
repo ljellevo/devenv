@@ -8,10 +8,11 @@ export const recipeHash = (config: Omit<InstallConfig, 'recipeHash'>, target = '
 const recordName = () => process.env.WSL_DISTRO_NAME ? `install.wsl-${createHash('sha256').update(process.env.WSL_DISTRO_NAME).digest('hex').slice(0, 16)}.json` : 'install.json';
 const recordPath = (file: string) => join(dirname(file), '.devenv', recordName());
 
-export async function readInstallRecord(file: string, hash: string): Promise<InstallRecord | null> {
+// Returns the record even when the recipe has changed since; callers compare recipeHash themselves.
+export async function readInstallRecord(file: string): Promise<InstallRecord | null> {
   try {
     const value = JSON.parse(await readFile(recordPath(file), 'utf8')) as InstallRecord;
-    if (value.version !== 1 || value.recipeHash !== hash || !Array.isArray(value.completedStepIds) || typeof value.installed !== 'boolean') return null;
+    if (value.version !== 1 || typeof value.recipeHash !== 'string' || !Array.isArray(value.completedStepIds) || typeof value.installed !== 'boolean') return null;
     return value;
   } catch { return null; }
 }
