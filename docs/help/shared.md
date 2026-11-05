@@ -22,11 +22,11 @@ Create nested folders in the sidebar to organize projects without moving files o
 
 ## Install a cloned project
 
-A project may declare optional installation commands. Devenv discovers only folders with `devenv.toml`; it never runs a command during scanning. If the project has an `[install]` recipe and no matching completion record, the header shows **Install project**. Click it to run ordered steps in the Install tab, which lists each step with a spinner while it runs and a checkmark when it finishes. Click **Show terminal** to see the live output, and type into that terminal if a tool asks for input. Each step can include `notes` with setup guidance. Devenv stops the currently running project before executing install commands. After all steps finish, click **Run project** separately.
+A project may declare optional installation commands. Devenv discovers only folders with `devenv.toml`; it never runs a command during scanning. If the project has an `[install]` recipe and no completion record, the header shows **Install project**. Click it to run ordered steps in the Install tab, which lists each step with a spinner while it runs and a checkmark when it finishes. Click **Show terminal** to see the live output, and type into that terminal if a tool asks for input. Each step can include `notes` with setup guidance. Devenv stops the currently running project before executing install commands. After all steps finish, click **Run project** separately.
 
-A failed step leaves completed steps recorded. Choose **Retry failed step** to continue from there, or **Restart all steps** to run the whole recipe again. The project action menu offers **Reinstall project** even after a successful install. **Cancel install** stops the current step. Devenv writes a local installation record under `.devenv/` beside the TOML and adds `.devenv/` to that directory’s `.gitignore`. Removing the record or changing the recipe makes the project eligible for installation again.
+A failed step leaves completed steps recorded. Choose **Retry failed step** to continue from there, or **Restart all steps** to run the whole recipe again. The project action menu offers **Reinstall project** even after a successful install. **Cancel install** stops the current step. Devenv writes a local installation record under `.devenv/` beside the TOML and adds `.devenv/` to that directory’s `.gitignore`. Removing the record makes the project eligible for installation again. Changing the recipe keeps the project installed; the Install tab notes the change and offers **Reinstall project**.
 
-If `check_command` is set, Devenv runs it only when you click Install or Run. An existing clone that passes the check is marked installed without running steps. If the check fails when you click Run, the project returns to Install and no services start. Without `check_command`, the local completion record determines installation status. A project without `[install]` runs as before.
+If `check_command` is set, Devenv runs it only when you click Install or Run. An existing clone that passes the check is marked installed without running steps. Once a completion record exists, Devenv trusts it and skips the check. If the check fails on a project without a record, no services start and the header shows **Install project**. A project without `[install]` runs as before.
 
 The install table supports `cwd` and `check_command`. Each step requires a stable `id` and a shell `command`; optional fields are `cwd`, `env`, `env_file`, `timeout` in seconds, `interactive`, and `notes`. Paths resolve relative to the TOML file. Steps run in order, using the configured shell. Avoid putting secrets in TOML. A step can create service directories or environment files; Devenv validates their existence before Run.
 
@@ -80,7 +80,7 @@ Every command field accepts a string or a map, including service commands, readi
 command = { default = "npm run dev", windows = "npm.cmd run dev" }
 ```
 
-Supported keys are `macos`, `linux`, `windows`, and `default`. The execution platform takes precedence over `default`; a missing match is an error. WSL uses `linux`. Installation records include resolved commands and execution identity, so changing them requires installation again.
+Supported keys are `macos`, `linux`, `windows`, and `default`. The execution platform takes precedence over `default`; a missing match is an error. WSL uses `linux`. Installation records include resolved commands and execution identity, so the Install tab offers **Reinstall project** when they change.
 
 ## Troubleshooting and recovery
 

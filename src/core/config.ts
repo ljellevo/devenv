@@ -91,8 +91,9 @@ export async function validateProjectText(file: string, text: string, context = 
     }
   }
   dependencyOrder(enabled);
-  const record = install && await readInstallRecord(path, install.recipeHash);
-  return { id: projectId(path, context.target), executionTarget: context.target, path, name: data.name, services, install, installed: !install || !!record?.installed };
+  const record = install && await readInstallRecord(path);
+  const installed = !install || !!record?.installed;
+  return { id: projectId(path, context.target), executionTarget: context.target, path, name: data.name, services, install, installed, installOutdated: !!install && installed && record?.recipeHash !== install.recipeHash };
 }
 
 export async function validateRuntimePaths(project: Project): Promise<void> {

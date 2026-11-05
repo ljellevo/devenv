@@ -24,7 +24,7 @@ it('discovers uninstalled projects without executing commands and allows install
   await expect(readFile(join(root, 'installed'))).rejects.toThrow();
 });
 
-it('records successful steps, ignores the record in git, and reruns changed recipes', async () => {
+it('records successful steps, ignores the record in git, and keeps a changed recipe installed', async () => {
   const { root, file } = await fixture('[[install.steps]]\nid="setup"\ncommand="mkdir generated; touch installed"\n');
   const installer = new Installer('/bin/sh', process.env, async () => {});
   await installer.install(file, 'resume');
@@ -32,19 +32,38 @@ it('records successful steps, ignores the record in git, and reruns changed reci
   expect(await readFile(join(root, '.gitignore'), 'utf8')).toContain('.devenv/');
   expect((await readFile(join(root, '.devenv/install.json'), 'utf8'))).toContain('"installed": true');
   expect(await installer.check(file)).toBe(true);
+  expect((await loadProject(file)).installOutdated).toBe(false);
   await writeFile(file, (await readFile(file, 'utf8')).replace('touch installed', 'touch installed; touch second'));
-  expect((await loadProject(file)).installed).toBe(false);
+  const changed = await loadProject(file);
+  expect(changed.installed).toBe(true);
+  expect(changed.installOutdated).toBe(true);
+  expect(await installer.check(file)).toBe(true);
+  await installer.install(file, 'restart');
+  expect((await loadProject(file)).installOutdated).toBe(false);
+  await expect(readFile(join(root, 'second'))).resolves.toBeDefined();
 });
 
-it('recognizes an already installed clone through its check and invalidates a failed check', async () => {
+it('recognizes an already installed clone through its check and keeps the record when the check later fails', async () => {
   const { root, file } = await fixture('[[install.steps]]\nid="setup"\ncommand="mkdir generated; touch installed"\n');
   await writeFile(join(root, 'installed'), '');
   const installer = new Installer('/bin/sh', process.env, async () => { throw new Error('Should not stop another project'); });
   await installer.install(file, 'resume');
   expect((await loadProject(file)).installed).toBe(true);
   await rm(join(root, 'installed'));
+  expect(await installer.check(file)).toBe(true);
+  expect((await loadProject(file)).installed).toBe(true);
+});
+
+it('runs the check without a record, and still after a cancelled install', async () => {
+  const slow = await fixture('[[install.steps]]\nid="wait"\ncommand="sleep 30"\n');
+  const installer = new Installer('/bin/sh', process.env, async () => {});
+  installer.on('state', state => { if (state?.stepId === 'wait' && state.status === 'running') setTimeout(() => installer.cancel(), 100); });
+  await expect(installer.install(slow.file, 'resume')).rejects.toThrow();
+  const { root, file } = await fixture('[[install.steps]]\nid="setup"\ncommand="mkdir generated; touch installed"\n');
   expect(await installer.check(file)).toBe(false);
-  expect((await loadProject(file)).installed).toBe(false);
+  await writeFile(join(root, 'installed'), '');
+  expect(await installer.check(file)).toBe(true);
+  expect((await loadProject(file)).installed).toBe(true);
 });
 
 it('does not mark a recipe installed when its final check fails', async () => {

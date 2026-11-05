@@ -94,7 +94,7 @@ interactive = true
 notes = "Answer any package manager prompts in the Install tab."
 ```
 
-The optional `check_command` is a read-only command that exits zero when dependencies are present. It runs when you click Install or Run, never during discovery. If it passes on a fresh clone, Devenv records installation without running steps. If it fails on Run, no services start. Without a check, the local record determines installation status. Each step supports `id`, `command`, `cwd`, `env`, `env_file`, `timeout`, `interactive`, and `notes`; paths are relative to the TOML file. Changing executable recipe fields invalidates the record. Projects without `[install]` continue to run directly.
+The optional `check_command` is a read-only command that exits zero when dependencies are present. It runs when you click Install or Run, never during discovery. If it passes on a fresh clone, Devenv records installation without running steps. Once a project has a completed install record, Devenv trusts it and skips the check, so the check never sends an installed project back to Install. Each step supports `id`, `command`, `cwd`, `env`, `env_file`, `timeout`, `interactive`, and `notes`; paths are relative to the TOML file. Changing executable recipe fields keeps the project installed; the Install tab then offers **Reinstall project** to apply the new steps. Projects without `[install]` continue to run directly.
 
 ## Configure services
 
